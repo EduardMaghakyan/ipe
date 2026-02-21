@@ -16,3 +16,9 @@ export interface PlanData {
   plan: string;
   permissionMode: string;
 }
+
+export interface PlanVersion {
+  version: number;
+  plan: string;
+  timestamp: number;
+}

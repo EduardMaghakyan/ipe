@@ -1,14 +1,18 @@
 <script lang="ts">
-  import type { Annotation, Block, PlanData } from "./types";
+  import type { Annotation, Block, PlanData, PlanVersion } from "./types";
   import { parseMarkdown } from "./utils/parser";
   import { formatFeedback } from "./utils/feedback";
   import Toolbar from "./lib/Toolbar.svelte";
   import PlanViewer from "./lib/PlanViewer.svelte";
+  import DiffOverlay from "./lib/DiffOverlay.svelte";
 
   let plan = $state("");
   let blocks = $state<Block[]>([]);
   let annotations = $state<Annotation[]>([]);
+  let versions = $state<PlanVersion[]>([]);
+  let showDiff = $state(false);
   let loading = $state(true);
+  let error = $state("");
   let submitting = $state(false);
   let generalComment = $state("");
   let theme = $state<"dark" | "light">(
@@ -25,11 +29,18 @@
   }
 
   $effect(() => {
-    fetch("/api/plan")
-      .then((r) => r.json())
-      .then((data: PlanData) => {
+    Promise.all([
+      fetch("/api/plan").then((r) => r.json()),
+      fetch("/api/history").then((r) => r.json()),
+    ])
+      .then(([data, history]: [PlanData, PlanVersion[]]) => {
         plan = data.plan;
         blocks = parseMarkdown(data.plan);
+        versions = history;
+        loading = false;
+      })
+      .catch(() => {
+        error = "Failed to load plan. Please refresh.";
         loading = false;
       });
   });
@@ -46,11 +57,11 @@
     annotations = annotations.map((a) => (a.id === id ? { ...a, comment } : a));
   }
 
-  async function handleApprove() {
+  async function submitDecision(endpoint: string) {
     submitting = true;
     const nonEmpty = annotations.filter((a) => a.comment.trim());
     const feedback = formatFeedback(nonEmpty, generalComment);
-    await fetch("/api/approve", {
+    await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feedback }),
@@ -58,19 +69,7 @@
     window.close();
   }
 
-  async function handleDeny() {
-    submitting = true;
-    const nonEmpty = annotations.filter((a) => a.comment.trim());
-    const feedback = formatFeedback(nonEmpty, generalComment);
-    await fetch("/api/deny", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ feedback }),
-    });
-    window.close();
-  }
-
-  let title = $derived(() => {
+  let title = $derived.by(() => {
     const firstHeading = blocks.find((b) => b.type === "heading");
     if (firstHeading) return firstHeading.content.replace(/^#+\s*/, "");
     return "Plan Review";
@@ -79,16 +78,27 @@
 
 {#if loading}
   <div class="loading">Loading plan...</div>
+{:else if error}
+  <div class="loading">{error}</div>
 {:else if submitting}
   <div class="loading">Submitting... you can close this tab.</div>
 {:else}
+  {#if showDiff}
+    <DiffOverlay
+      currentPlan={plan}
+      {versions}
+      onClose={() => (showDiff = false)}
+    />
+  {/if}
   <Toolbar
-    title={title()}
+    {title}
     commentCount={annotations.length}
+    versionCount={versions.length + 1}
     {theme}
     onToggleTheme={toggleTheme}
-    onApprove={handleApprove}
-    onDeny={handleDeny}
+    onCompare={() => (showDiff = true)}
+    onApprove={() => submitDecision("/api/approve")}
+    onDeny={() => submitDecision("/api/deny")}
   />
   <main class="main">
     <PlanViewer
@@ -132,6 +142,11 @@
     --color-delete-hover-bg: rgba(248, 81, 73, 0.1);
     --color-annotated-border: #1f6feb;
     --color-annotated-bg: rgba(31, 111, 235, 0.05);
+    --color-diff-add-bg: rgba(35, 134, 54, 0.2);
+    --color-diff-add-text: #7ee787;
+    --color-diff-remove-bg: rgba(248, 81, 73, 0.2);
+    --color-diff-remove-text: #ffa198;
+    --color-diff-hunk: #bc8cff;
     --color-shadow: rgba(0, 0, 0, 0.4);
   }
 
@@ -157,6 +172,11 @@
     --color-delete-hover-bg: rgba(207, 34, 46, 0.1);
     --color-annotated-border: #0969da;
     --color-annotated-bg: rgba(9, 105, 218, 0.05);
+    --color-diff-add-bg: rgba(26, 127, 55, 0.15);
+    --color-diff-add-text: #116329;
+    --color-diff-remove-bg: rgba(207, 34, 46, 0.15);
+    --color-diff-remove-text: #82071e;
+    --color-diff-hunk: #6639ba;
     --color-shadow: rgba(0, 0, 0, 0.15);
   }
 

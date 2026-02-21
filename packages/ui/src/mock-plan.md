@@ -24,6 +24,28 @@ export function createRefreshToken(userId: string): string {
 }
 ```
 
+Here's the diff for the middleware changes:
+
+```diff
+@@ -1,8 +1,12 @@
+-import session from 'express-session';
++import { verifyToken } from './auth/jwt';
+
+ export function authMiddleware(req, res, next) {
+-  if (!req.session.userId) {
+-    return res.status(401).json({ error: 'Not authenticated' });
++  const header = req.headers.authorization;
++  if (!header?.startsWith('Bearer ')) {
++    return res.status(401).json({ error: 'Missing token' });
+   }
+-  next();
++  const token = header.slice(7);
++  const decoded = verifyToken(token);
++  req.user = decoded;
++  next();
+ }
+```
+
 ## Step 2: Update middleware
 
 Replace the existing session middleware with JWT verification:

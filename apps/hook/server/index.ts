@@ -1,11 +1,13 @@
 import { startServer } from "../../../packages/server/index.ts";
 import { openBrowser } from "../../../packages/server/browser.ts";
+import { loadHistory, saveVersion } from "../../../packages/server/history.ts";
 
 interface HookInput {
   tool_input: {
     plan?: string;
     [key: string]: unknown;
   };
+  session_id?: string;
   permission_mode?: string;
   [key: string]: unknown;
 }
@@ -18,25 +20,15 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf-8");
 }
 
-function outputAllow(feedback: string): void {
-  const output: Record<string, unknown> = {
-    hookSpecificOutput: {
-      hookEventName: "PermissionRequest",
-      decision: { behavior: "allow" },
-    },
-  };
-  process.stdout.write(JSON.stringify(output) + "\n");
-}
-
-function outputDeny(feedback: string): void {
-  const message = feedback || "Plan changes requested";
+function outputDecision(behavior: "allow" | "deny", message?: string): void {
+  const decision: Record<string, unknown> = { behavior };
+  if (behavior === "deny") {
+    decision.message = message || "Plan changes requested";
+  }
   const output = {
     hookSpecificOutput: {
       hookEventName: "PermissionRequest",
-      decision: {
-        behavior: "deny",
-        message,
-      },
+      decision,
     },
   };
   process.stdout.write(JSON.stringify(output) + "\n");
@@ -55,22 +47,31 @@ async function main() {
 
   const plan = input.tool_input?.plan || "";
   const permissionMode = input.permission_mode || "default";
+  const sessionId = input.session_id || "";
 
   if (!plan) {
     console.error("No plan found in stdin input");
     process.exit(1);
   }
 
+  // Save current plan version and load history
+  let previousPlans: Awaited<ReturnType<typeof loadHistory>> = [];
+  if (sessionId) {
+    saveVersion(sessionId, plan);
+    previousPlans = loadHistory(sessionId).filter((v) => v.plan !== plan);
+  }
+
   const done = new Promise<void>((resolve) => {
     const { port } = startServer({
       plan,
       permissionMode,
+      previousPlans,
       onApprove(feedback: string) {
-        outputAllow(feedback);
+        outputDecision("allow", feedback);
         resolve();
       },
       onDeny(feedback: string) {
-        outputDeny(feedback);
+        outputDecision("deny", feedback);
         resolve();
       },
     });

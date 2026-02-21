@@ -1,8 +1,10 @@
 import html from "../ui/dist/index.html" with { type: "text" };
+import type { PlanVersion } from "./history";
 
 interface ServerOptions {
   plan: string;
   permissionMode: string;
+  previousPlans?: PlanVersion[];
   onApprove: (feedback: string) => void;
   onDeny: (feedback: string) => void;
 }
@@ -29,17 +31,19 @@ export function startServer(options: ServerOptions): {
         });
       }
 
-      if (req.method === "POST" && url.pathname === "/api/approve") {
-        return req.json().then((body: { feedback?: string }) => {
-          options.onApprove(body.feedback || "");
-          setTimeout(() => server.stop(), 100);
-          return Response.json({ ok: true });
-        });
+      if (req.method === "GET" && url.pathname === "/api/history") {
+        return Response.json(options.previousPlans ?? []);
       }
 
-      if (req.method === "POST" && url.pathname === "/api/deny") {
+      const callbacks: Record<string, ((f: string) => void) | undefined> = {
+        "/api/approve": options.onApprove,
+        "/api/deny": options.onDeny,
+      };
+      const callback =
+        req.method === "POST" ? callbacks[url.pathname] : undefined;
+      if (callback) {
         return req.json().then((body: { feedback?: string }) => {
-          options.onDeny(body.feedback || "");
+          callback(body.feedback || "");
           setTimeout(() => server.stop(), 100);
           return Response.json({ ok: true });
         });

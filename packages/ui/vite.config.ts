@@ -19,6 +19,36 @@ function mockApiPlugin() {
           return;
         }
 
+        if (req.url === "/api/history" && req.method === "GET") {
+          const plan = readFileSync(
+            resolve(__dirname, "src/mock-plan.md"),
+            "utf-8",
+          );
+          const mockHistory = [
+            {
+              version: 1,
+              plan: plan
+                .replace(
+                  "## Step 5: Frontend changes",
+                  "## Step 5: Client updates",
+                )
+                .replace("## Testing", "## Verification"),
+              timestamp: Date.now() - 120000,
+            },
+            {
+              version: 2,
+              plan: plan.replace(
+                "## Step 5: Frontend changes",
+                "## Step 5: Client updates",
+              ),
+              timestamp: Date.now() - 60000,
+            },
+          ];
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(mockHistory));
+          return;
+        }
+
         if (req.url === "/api/approve" && req.method === "POST") {
           let body = "";
           req.on("data", (chunk: string) => (body += chunk));

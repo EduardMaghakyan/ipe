@@ -110,4 +110,26 @@ describe("startServer", () => {
     const res = await fetch(`http://localhost:${port}/unknown`);
     expect(res.status).toBe(404);
   });
+
+  test("GET /api/history returns empty array when no previous plans", async () => {
+    const { port } = createServer();
+    const res = await fetch(`http://localhost:${port}/api/history`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toEqual([]);
+  });
+
+  test("GET /api/history returns previous plans when provided", async () => {
+    const previousPlans = [
+      { version: 1, plan: "# Old Plan", timestamp: 1000 },
+      { version: 2, plan: "# Updated Plan", timestamp: 2000 },
+    ];
+    const { port } = createServer({ previousPlans });
+    const res = await fetch(`http://localhost:${port}/api/history`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveLength(2);
+    expect(data[0].version).toBe(1);
+    expect(data[1].plan).toBe("# Updated Plan");
+  });
 });

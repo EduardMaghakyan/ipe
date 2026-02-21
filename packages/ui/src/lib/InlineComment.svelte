@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Annotation } from "../types";
+  import { truncateText } from "../utils/diff";
 
   interface Props {
     annotation: Annotation;
@@ -38,9 +39,7 @@
 <div class="inline-comment">
   {#if annotation.selectedText}
     <div class="quoted-text">
-      {annotation.selectedText.length > 120
-        ? annotation.selectedText.slice(0, 120) + "..."
-        : annotation.selectedText}
+      {truncateText(annotation.selectedText, 120)}
     </div>
   {/if}
   {#if editing}
