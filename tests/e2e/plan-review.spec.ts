@@ -163,7 +163,7 @@ test.describe("Plan Review", () => {
   });
 
   test("Compare button is visible when history exists", async ({ page }) => {
-    const compareBtn = page.locator(".btn-compare");
+    const compareBtn = page.locator("button:has-text('Compare')");
     await expect(compareBtn).toBeVisible();
     await expect(compareBtn).toContainText("Compare");
   });
@@ -171,7 +171,7 @@ test.describe("Plan Review", () => {
   test("Compare button opens diff overlay with two version selects", async ({
     page,
   }) => {
-    await page.locator(".btn-compare").click();
+    await page.locator("button:has-text('Compare')").click();
     const overlay = page.locator(".overlay");
     await expect(overlay).toBeVisible();
 
@@ -179,38 +179,39 @@ test.describe("Plan Review", () => {
     const selects = overlay.locator(".version-select");
     await expect(selects).toHaveCount(2);
 
-    // Should show inline diff by default
-    const diffContent = overlay.locator(".diff-content");
-    await expect(diffContent).toBeVisible();
+    // Should show side-by-side diff by default
+    const sbs = overlay.locator(".side-by-side");
+    await expect(sbs).toBeVisible();
 
     // Close button works
     await overlay.locator(".close-btn").click();
     await expect(overlay).not.toBeVisible();
   });
 
-  test("Side-by-side view toggle works", async ({ page }) => {
-    await page.locator(".btn-compare").click();
+  test("View toggle switches between side-by-side and inline", async ({
+    page,
+  }) => {
+    await page.locator("button:has-text('Compare')").click();
     const overlay = page.locator(".overlay");
 
-    // Click side-by-side toggle
-    await overlay.locator(".toggle-btn", { hasText: "Side-by-side" }).click();
-
-    // Should show side-by-side layout
+    // Default is side-by-side
     const sbs = overlay.locator(".side-by-side");
     await expect(sbs).toBeVisible();
-
-    // Should have two panels
     const panels = sbs.locator(".sbs-panel");
     await expect(panels).toHaveCount(2);
 
-    // Switch back to inline
+    // Switch to inline
     await overlay.locator(".toggle-btn", { hasText: "Inline" }).click();
     await expect(overlay.locator(".diff-content")).toBeVisible();
     await expect(sbs).not.toBeVisible();
+
+    // Switch back to side-by-side
+    await overlay.locator(".toggle-btn", { hasText: "Side-by-side" }).click();
+    await expect(sbs).toBeVisible();
   });
 
   test("Can compare two past versions", async ({ page }) => {
-    await page.locator(".btn-compare").click();
+    await page.locator("button:has-text('Compare')").click();
     const overlay = page.locator(".overlay");
     const selects = overlay.locator(".version-select");
 
@@ -218,9 +219,8 @@ test.describe("Plan Review", () => {
     await selects.nth(0).selectOption({ index: 0 }); // v1
     await selects.nth(1).selectOption({ index: 1 }); // v2
 
-    // Diff content should still render
-    const diffContent = overlay.locator(".diff-content");
-    await expect(diffContent).toBeVisible();
+    // Diff content should still render (side-by-side by default)
+    await expect(overlay.locator(".side-by-side")).toBeVisible();
 
     // Should have some diff lines
     const diffLines = overlay.locator(".diff-line");

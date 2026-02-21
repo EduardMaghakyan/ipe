@@ -15,7 +15,7 @@ test.describe("Theme Toggle", () => {
     await page.goto("/");
     await page.waitForSelector(".plan-viewer");
 
-    await page.locator(".btn-theme").click();
+    await page.locator("[aria-label='Toggle theme']").click();
     const theme = await page.locator("html").getAttribute("data-theme");
     expect(theme).toBe("light");
   });
@@ -28,7 +28,7 @@ test.describe("Theme Toggle", () => {
     await page.waitForSelector(".plan-viewer");
 
     // Switch to light
-    await page.locator(".btn-theme").click();
+    await page.locator("[aria-label='Toggle theme']").click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 
     // Reload — no addInitScript clearing localStorage this time
@@ -45,11 +45,11 @@ test.describe("Theme Toggle", () => {
     await page.waitForSelector(".plan-viewer");
 
     // Switch to light
-    await page.locator(".btn-theme").click();
+    await page.locator("[aria-label='Toggle theme']").click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 
     // Toggle back
-    await page.locator(".btn-theme").click();
+    await page.locator("[aria-label='Toggle theme']").click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   });
 });

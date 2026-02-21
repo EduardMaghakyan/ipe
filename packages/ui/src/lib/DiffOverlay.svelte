@@ -1,12 +1,6 @@
 <script lang="ts">
-  import type { DiffLine } from "../utils/diff";
+  import type { PlanVersion } from "../types";
   import { computeDiff } from "../utils/diff";
-
-  interface PlanVersion {
-    version: number;
-    plan: string;
-    timestamp: number;
-  }
 
   interface SideBySideLine {
     left: { content: string; type: "remove" | "context" | "blank" };
@@ -21,7 +15,7 @@
 
   let { currentPlan, versions, onClose }: Props = $props();
 
-  let viewMode = $state<"inline" | "side-by-side">("inline");
+  let viewMode = $state<"inline" | "side-by-side">("side-by-side");
 
   // Build allVersions: previous versions + "Current"
   let allVersions = $derived.by(() => {
@@ -75,6 +69,13 @@
     return idx === allVersions.length - 1 ? "Current" : `v${v.version}`;
   }
 
+  const diffClass: Record<string, string> = {
+    add: "diff-add",
+    remove: "diff-remove",
+    context: "diff-context",
+    blank: "diff-blank",
+  };
+
   let leftPanel: HTMLElement | undefined = $state();
   let rightPanel: HTMLElement | undefined = $state();
   let syncing = false;
@@ -124,16 +125,8 @@
     <div class="diff-content">
       <pre><code
           >{#each diffLines as line}<span
-              class="diff-line {line.type === 'add'
-                ? 'diff-add'
-                : line.type === 'remove'
-                  ? 'diff-remove'
-                  : 'diff-context'}"
-              >{line.type === "add"
-                ? "+"
-                : line.type === "remove"
-                  ? "-"
-                  : " "} {line.content}</span
+              class="diff-line {diffClass[line.type]}"
+              >{line.type === "add" ? "+" : line.type === "remove" ? "-" : " "} {line.content}</span
             >
           {/each}</code
         ></pre>
@@ -147,11 +140,7 @@
       >
         <pre><code
             >{#each sideBySideLines as row}<span
-                class="diff-line {row.left.type === 'remove'
-                  ? 'diff-remove'
-                  : row.left.type === 'blank'
-                    ? 'diff-blank'
-                    : 'diff-context'}">{row.left.content}</span
+                class="diff-line {diffClass[row.left.type]}">{row.left.content}</span
               >
             {/each}</code
           ></pre>
@@ -163,11 +152,7 @@
       >
         <pre><code
             >{#each sideBySideLines as row}<span
-                class="diff-line {row.right.type === 'add'
-                  ? 'diff-add'
-                  : row.right.type === 'blank'
-                    ? 'diff-blank'
-                    : 'diff-context'}">{row.right.content}</span
+                class="diff-line {diffClass[row.right.type]}">{row.right.content}</span
               >
             {/each}</code
           ></pre>
@@ -234,8 +219,10 @@
     border-right: none;
   }
   .toggle-btn.active {
-    background: var(--color-bg-overlay);
-    color: var(--color-text-emphasis);
+    background: transparent;
+    color: var(--color-deny-text);
+    border-color: var(--color-deny-text);
+    border: 1px solid var(--color-deny-text);
   }
   .toggle-btn:hover:not(.active) {
     background: var(--color-bg-overlay);

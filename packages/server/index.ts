@@ -35,17 +35,14 @@ export function startServer(options: ServerOptions): {
         return Response.json(options.previousPlans ?? []);
       }
 
-      if (req.method === "POST" && url.pathname === "/api/approve") {
+      const callbacks: Record<string, ((f: string) => void) | undefined> = {
+        "/api/approve": options.onApprove,
+        "/api/deny": options.onDeny,
+      };
+      const callback = req.method === "POST" ? callbacks[url.pathname] : undefined;
+      if (callback) {
         return req.json().then((body: { feedback?: string }) => {
-          options.onApprove(body.feedback || "");
-          setTimeout(() => server.stop(), 100);
-          return Response.json({ ok: true });
-        });
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/deny") {
-        return req.json().then((body: { feedback?: string }) => {
-          options.onDeny(body.feedback || "");
+          callback(body.feedback || "");
           setTimeout(() => server.stop(), 100);
           return Response.json({ ok: true });
         });

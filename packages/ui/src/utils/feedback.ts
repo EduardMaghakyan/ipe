@@ -1,4 +1,5 @@
 import type { Annotation } from "../types";
+import { truncateText } from "./diff";
 
 export function formatFeedback(
   annotations: Annotation[],
@@ -6,19 +7,17 @@ export function formatFeedback(
 ): string {
   const parts: string[] = [];
 
-  if (generalComment?.trim()) {
+  const trimmedComment = generalComment?.trim();
+  if (trimmedComment) {
     parts.push("General feedback:\n");
-    parts.push(`> ${generalComment.trim()}\n`);
+    parts.push(`> ${trimmedComment}\n`);
   }
 
   if (annotations.length > 0) {
     parts.push("Plan feedback:\n");
     annotations.forEach((annotation, index) => {
       if (annotation.selectedText) {
-        const truncated =
-          annotation.selectedText.length > 100
-            ? annotation.selectedText.slice(0, 100) + "..."
-            : annotation.selectedText;
+        const truncated = truncateText(annotation.selectedText, 100);
         parts.push(`## ${index + 1}. Feedback on: "${truncated}"`);
       } else {
         parts.push(`## ${index + 1}. Comment on block`);

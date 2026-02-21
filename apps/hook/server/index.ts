@@ -20,25 +20,18 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf-8");
 }
 
-function outputAllow(feedback: string): void {
-  const output: Record<string, unknown> = {
-    hookSpecificOutput: {
-      hookEventName: "PermissionRequest",
-      decision: { behavior: "allow" },
-    },
-  };
-  process.stdout.write(JSON.stringify(output) + "\n");
-}
-
-function outputDeny(feedback: string): void {
-  const message = feedback || "Plan changes requested";
+function outputDecision(
+  behavior: "allow" | "deny",
+  message?: string,
+): void {
+  const decision: Record<string, unknown> = { behavior };
+  if (behavior === "deny") {
+    decision.message = message || "Plan changes requested";
+  }
   const output = {
     hookSpecificOutput: {
       hookEventName: "PermissionRequest",
-      decision: {
-        behavior: "deny",
-        message,
-      },
+      decision,
     },
   };
   process.stdout.write(JSON.stringify(output) + "\n");
@@ -77,11 +70,11 @@ async function main() {
       permissionMode,
       previousPlans,
       onApprove(feedback: string) {
-        outputAllow(feedback);
+        outputDecision("allow", feedback);
         resolve();
       },
       onDeny(feedback: string) {
-        outputDeny(feedback);
+        outputDecision("deny", feedback);
         resolve();
       },
     });

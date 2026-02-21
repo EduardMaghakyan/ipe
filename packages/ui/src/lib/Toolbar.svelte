@@ -33,7 +33,7 @@
   </div>
   <div class="toolbar-right">
     <button
-      class="btn btn-theme"
+      class="btn btn-secondary"
       onclick={onToggleTheme}
       aria-label="Toggle theme"
     >
@@ -44,7 +44,7 @@
       {/if}
     </button>
     {#if versionCount > 1}
-      <button class="btn btn-compare" onclick={onCompare}>Compare</button>
+      <button class="btn btn-secondary" onclick={onCompare}>Compare</button>
     {/if}
     <button class="btn btn-deny" onclick={onDeny}>Request Changes</button>
     <button class="btn btn-approve" onclick={onApprove}>Approve</button>
@@ -111,24 +111,12 @@
   .btn-deny:hover {
     background: var(--color-deny-hover-bg);
   }
-  .btn-theme {
-    background: transparent;
-    border: 1px solid var(--color-border);
-    color: var(--color-text-muted);
-    padding: 6px 10px;
-    font-size: 1rem;
-    line-height: 1;
-  }
-  .btn-theme:hover {
-    background: var(--color-bg-overlay);
-    color: var(--color-text-default);
-  }
-  .btn-compare {
+  .btn-secondary {
     background: transparent;
     border: 1px solid var(--color-border);
     color: var(--color-text-muted);
   }
-  .btn-compare:hover {
+  .btn-secondary:hover {
     background: var(--color-bg-overlay);
     color: var(--color-text-default);
   }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Annotation, Block } from "../types";
-  import { isDiffContent } from "../utils/diff";
+  import { isDiffContent, escapeHtml } from "../utils/diff";
   import SelectionPopup from "./SelectionPopup.svelte";
   import InlineComment from "./InlineComment.svelte";
 
@@ -30,7 +30,8 @@
 
   function handleMouseUp(blockId: string) {
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+    const text = sel?.toString().trim();
+    if (!sel || sel.isCollapsed || !text) {
       popup = null;
       return;
     }
@@ -40,7 +41,7 @@
       x: rect.left + rect.width / 2,
       y: rect.top,
       blockId,
-      text: sel.toString().trim(),
+      text,
     };
   }
 
@@ -102,10 +103,7 @@
   }
 
   function renderInlineMarkdown(text: string): string {
-    return text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
+    return escapeHtml(text)
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>")
       .replace(/`(.+?)`/g, '<code class="inline-code">$1</code>')
@@ -129,10 +127,7 @@
     if (isDiffContent(lang, codeLines)) {
       const rendered = codeLines
         .map((line) => {
-          const escaped = line
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;");
+          const escaped = escapeHtml(line);
           if (/^@@\s/.test(line)) {
             return `<span class="diff-hunk">${escaped}</span>`;
           }
@@ -149,7 +144,7 @@
     }
 
     const code = codeLines.join("\n");
-    return `<pre><code${lang ? ` class="language-${lang}"` : ""}>${code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</code></pre>`;
+    return `<pre><code${lang ? ` class="language-${lang}"` : ""}>${escapeHtml(code)}</code></pre>`;
   }
 
   function renderList(block: Block): string {

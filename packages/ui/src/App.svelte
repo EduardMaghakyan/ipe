@@ -12,6 +12,7 @@
   let versions = $state<PlanVersion[]>([]);
   let showDiff = $state(false);
   let loading = $state(true);
+  let error = $state("");
   let submitting = $state(false);
   let generalComment = $state("");
   let theme = $state<"dark" | "light">(
@@ -31,12 +32,17 @@
     Promise.all([
       fetch("/api/plan").then((r) => r.json()),
       fetch("/api/history").then((r) => r.json()),
-    ]).then(([data, history]: [PlanData, PlanVersion[]]) => {
-      plan = data.plan;
-      blocks = parseMarkdown(data.plan);
-      versions = history;
-      loading = false;
-    });
+    ])
+      .then(([data, history]: [PlanData, PlanVersion[]]) => {
+        plan = data.plan;
+        blocks = parseMarkdown(data.plan);
+        versions = history;
+        loading = false;
+      })
+      .catch(() => {
+        error = "Failed to load plan. Please refresh.";
+        loading = false;
+      });
   });
 
   function addAnnotation(annotation: Annotation) {
@@ -51,11 +57,11 @@
     annotations = annotations.map((a) => (a.id === id ? { ...a, comment } : a));
   }
 
-  async function handleApprove() {
+  async function submitDecision(endpoint: string) {
     submitting = true;
     const nonEmpty = annotations.filter((a) => a.comment.trim());
     const feedback = formatFeedback(nonEmpty, generalComment);
-    await fetch("/api/approve", {
+    await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feedback }),
@@ -63,19 +69,7 @@
     window.close();
   }
 
-  async function handleDeny() {
-    submitting = true;
-    const nonEmpty = annotations.filter((a) => a.comment.trim());
-    const feedback = formatFeedback(nonEmpty, generalComment);
-    await fetch("/api/deny", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ feedback }),
-    });
-    window.close();
-  }
-
-  let title = $derived(() => {
+  let title = $derived.by(() => {
     const firstHeading = blocks.find((b) => b.type === "heading");
     if (firstHeading) return firstHeading.content.replace(/^#+\s*/, "");
     return "Plan Review";
@@ -84,6 +78,8 @@
 
 {#if loading}
   <div class="loading">Loading plan...</div>
+{:else if error}
+  <div class="loading">{error}</div>
 {:else if submitting}
   <div class="loading">Submitting... you can close this tab.</div>
 {:else}
@@ -95,14 +91,14 @@
     />
   {/if}
   <Toolbar
-    title={title()}
+    {title}
     commentCount={annotations.length}
     versionCount={versions.length + 1}
     {theme}
     onToggleTheme={toggleTheme}
     onCompare={() => (showDiff = true)}
-    onApprove={handleApprove}
-    onDeny={handleDeny}
+    onApprove={() => submitDecision("/api/approve")}
+    onDeny={() => submitDecision("/api/deny")}
   />
   <main class="main">
     <PlanViewer
