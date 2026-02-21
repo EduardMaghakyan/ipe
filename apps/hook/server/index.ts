@@ -20,10 +20,7 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf-8");
 }
 
-function outputDecision(
-  behavior: "allow" | "deny",
-  message?: string,
-): void {
+function outputDecision(behavior: "allow" | "deny", message?: string): void {
   const decision: Record<string, unknown> = { behavior };
   if (behavior === "deny") {
     decision.message = message || "Plan changes requested";

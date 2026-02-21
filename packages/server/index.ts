@@ -39,7 +39,8 @@ export function startServer(options: ServerOptions): {
         "/api/approve": options.onApprove,
         "/api/deny": options.onDeny,
       };
-      const callback = req.method === "POST" ? callbacks[url.pathname] : undefined;
+      const callback =
+        req.method === "POST" ? callbacks[url.pathname] : undefined;
       if (callback) {
         return req.json().then((body: { feedback?: string }) => {
           callback(body.feedback || "");

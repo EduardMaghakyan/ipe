@@ -126,7 +126,11 @@
       <pre><code
           >{#each diffLines as line}<span
               class="diff-line {diffClass[line.type]}"
-              >{line.type === "add" ? "+" : line.type === "remove" ? "-" : " "} {line.content}</span
+              >{line.type === "add"
+                ? "+"
+                : line.type === "remove"
+                  ? "-"
+                  : " "} {line.content}</span
             >
           {/each}</code
         ></pre>
@@ -140,7 +144,8 @@
       >
         <pre><code
             >{#each sideBySideLines as row}<span
-                class="diff-line {diffClass[row.left.type]}">{row.left.content}</span
+                class="diff-line {diffClass[row.left.type]}"
+                >{row.left.content}</span
               >
             {/each}</code
           ></pre>
@@ -152,7 +157,8 @@
       >
         <pre><code
             >{#each sideBySideLines as row}<span
-                class="diff-line {diffClass[row.right.type]}">{row.right.content}</span
+                class="diff-line {diffClass[row.right.type]}"
+                >{row.right.content}</span
               >
             {/each}</code
           ></pre>
