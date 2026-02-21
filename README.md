@@ -28,23 +28,29 @@ Hook Server (Bun process, blocks until resolved)
     stdout → hook decision JSON → Claude Code continues
 ```
 
-## Quick Start
+## Install
 
 **Prerequisites:** [Bun](https://bun.sh)
 
+One command to install IPE and register it as a global Claude Code hook:
+
 ```sh
-git clone <repo-url> && cd ipe
-bun install
+curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash
+```
+
+This clones IPE to `~/.ipe`, builds the UI, and adds the hook to `~/.claude/settings.json`. Run it again to update.
+
+### Manual Setup
+
+If you prefer to install manually:
+
+```sh
+git clone https://github.com/eduardmaghakyan/ipe.git ~/.ipe
+cd ~/.ipe && bun install
 cd packages/ui && bun run build
 ```
 
-The UI build produces a single self-contained `index.html` that gets embedded into the server at runtime — no file serving needed.
-
-## Integration with Claude Code
-
-IPE runs as a [Claude Code hook](https://docs.anthropic.com/en/docs/claude-code/hooks) that intercepts `ExitPlanMode` permission requests. Add the following hook configuration using one of the options below.
-
-The hook config:
+Then add the hook to your Claude Code settings (`~/.claude/settings.json` for global, `.claude/settings.json` for project-level, or `.claude/settings.local.json` for local-only):
 
 ```json
 {
@@ -55,7 +61,7 @@ The hook config:
         "hooks": [
           {
             "type": "command",
-            "command": "bun /absolute/path/to/ipe/apps/hook/server/index.ts",
+            "command": "bun ~/.ipe/apps/hook/server/index.ts",
             "timeout": 345600
           }
         ]
@@ -65,20 +71,10 @@ The hook config:
 }
 ```
 
-> Replace `/absolute/path/to/ipe` with the actual path where you cloned this repo.
-
-**Where to put it:**
-
-| Option            | File                                          | Scope                                       |
-| ----------------- | --------------------------------------------- | ------------------------------------------- |
-| **Project-level** | `.claude/settings.json` in your project       | This project only, shared with team via git |
-| **Global**        | `~/.claude/settings.json`                     | All projects on your machine                |
-| **Local-only**    | `.claude/settings.local.json` in your project | This project only, gitignored               |
-
 **Key details:**
 
 - `"matcher": "ExitPlanMode"` — the hook only fires when Claude calls `ExitPlanMode`, not on other permission requests.
-- `"timeout": 345600` — 4 days in seconds. This gives you a generous window to review the plan before the hook times out. The process blocks until you approve or deny.
+- `"timeout": 345600` — 4 days in seconds. Generous window for reviewing plans. The process blocks until you approve or deny.
 - Verify your hook is registered by running `/hooks` inside Claude Code.
 
 ## Usage
@@ -119,7 +115,8 @@ ipe/
 │       │   └── utils/
 │       │       ├── parser.ts    # Markdown → Block[] (no external deps)
 │       │       └── feedback.ts  # Annotations → feedback string
-│       └── dist/index.html      # Built single-file bundle (committed)
+│       └── dist/index.html      # Built single-file bundle
+├── install.sh                   # One-command installer
 ├── package.json                 # Bun workspaces root
 └── tsconfig.json
 ```
@@ -133,6 +130,7 @@ echo '{"tool_input":{"plan":"# Test Plan\n\n## Step 1\nDo something\n\n## Step 2
 ```
 
 This should:
+
 - Open a browser tab with the plan rendered
 - Let you select text and add inline comments
 - Output `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}` on approve
@@ -143,3 +141,18 @@ This should:
 ```sh
 cd packages/ui && bun run build
 ```
+
+**Formatting:**
+
+```sh
+bun run format        # auto-fix
+bun run format:check  # check only
+```
+
+## Uninstall
+
+```sh
+rm -rf ~/.ipe
+```
+
+Then remove the `ExitPlanMode` hook entry from `~/.claude/settings.json`.

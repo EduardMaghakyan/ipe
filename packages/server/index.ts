@@ -7,7 +7,10 @@ interface ServerOptions {
   onDeny: (feedback: string) => void;
 }
 
-export function startServer(options: ServerOptions): { port: number; stop: () => void } {
+export function startServer(options: ServerOptions): {
+  port: number;
+  stop: () => void;
+} {
   const server = Bun.serve({
     port: 0,
     fetch(req) {

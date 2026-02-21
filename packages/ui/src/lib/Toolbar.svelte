@@ -13,7 +13,9 @@
   <div class="toolbar-left">
     <span class="toolbar-title">{title}</span>
     {#if commentCount > 0}
-      <span class="badge">{commentCount} comment{commentCount !== 1 ? "s" : ""}</span>
+      <span class="badge"
+        >{commentCount} comment{commentCount !== 1 ? "s" : ""}</span
+      >
     {/if}
   </div>
   <div class="toolbar-right">

@@ -89,7 +89,9 @@
     box-sizing: border-box;
   }
   :global(body) {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+    font-family:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+      sans-serif;
     background: #0d1117;
     color: #c9d1d9;
     line-height: 1.6;

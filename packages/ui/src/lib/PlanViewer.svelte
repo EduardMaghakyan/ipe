@@ -11,10 +11,20 @@
     onUpdateAnnotation: (id: string, comment: string) => void;
   }
 
-  let { blocks, annotations, onAddAnnotation, onRemoveAnnotation, onUpdateAnnotation }: Props =
-    $props();
+  let {
+    blocks,
+    annotations,
+    onAddAnnotation,
+    onRemoveAnnotation,
+    onUpdateAnnotation,
+  }: Props = $props();
 
-  let popup = $state<{ x: number; y: number; blockId: string; text: string } | null>(null);
+  let popup = $state<{
+    x: number;
+    y: number;
+    blockId: string;
+    text: string;
+  } | null>(null);
   let editingId = $state<string | null>(null);
 
   function handleMouseUp(blockId: string) {
@@ -62,7 +72,10 @@
 
   function handleDocumentClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
-    if (!target.closest(".popup") && !window.getSelection()?.toString().trim()) {
+    if (
+      !target.closest(".popup") &&
+      !window.getSelection()?.toString().trim()
+    ) {
       popup = null;
     }
   }
@@ -245,7 +258,8 @@
     margin: 12px 0;
   }
   .block :global(code) {
-    font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+    font-family:
+      "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
     font-size: 0.85rem;
   }
   .block :global(.inline-code) {

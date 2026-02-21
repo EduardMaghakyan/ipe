@@ -90,7 +90,11 @@ export function parseMarkdown(markdown: string): Block[] {
     }
 
     // Table
-    if (line.includes("|") && i + 1 < lines.length && /\|[\s-:]+\|/.test(lines[i + 1])) {
+    if (
+      line.includes("|") &&
+      i + 1 < lines.length &&
+      /\|[\s-:]+\|/.test(lines[i + 1])
+    ) {
       const tableLines = [line];
       i++;
       while (i < lines.length && lines[i].includes("|")) {
@@ -117,7 +121,11 @@ export function parseMarkdown(markdown: string): Block[] {
       !lines[i].trimStart().startsWith("```") &&
       !lines[i].startsWith(">") &&
       !/^(\s*[-*+]|\s*\d+\.)\s/.test(lines[i]) &&
-      !(lines[i].includes("|") && i + 1 < lines.length && /\|[\s-:]+\|/.test(lines[i + 1]))
+      !(
+        lines[i].includes("|") &&
+        i + 1 < lines.length &&
+        /\|[\s-:]+\|/.test(lines[i + 1])
+      )
     ) {
       paraLines.push(lines[i]);
       i++;

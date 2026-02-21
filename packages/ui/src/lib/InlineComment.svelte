@@ -10,7 +10,8 @@
     onEdit: (id: string) => void;
   }
 
-  let { annotation, editing, onSave, onCancel, onDelete, onEdit }: Props = $props();
+  let { annotation, editing, onSave, onCancel, onDelete, onEdit }: Props =
+    $props();
   let draft = $derived(annotation.comment);
 
   let localDraft = $state("");
@@ -48,15 +49,23 @@
       placeholder="Write a comment... (⌘+Enter to save)"
     ></textarea>
     <div class="comment-actions">
-      <button class="action-btn cancel" onclick={() => onCancel(annotation.id)}>Cancel</button>
+      <button class="action-btn cancel" onclick={() => onCancel(annotation.id)}
+        >Cancel</button
+      >
       <button class="action-btn save" onclick={handleSave}>Save</button>
     </div>
   {:else}
-    <button type="button" class="comment-body" onclick={() => onEdit(annotation.id)}>
+    <button
+      type="button"
+      class="comment-body"
+      onclick={() => onEdit(annotation.id)}
+    >
       {annotation.comment}
     </button>
     <div class="comment-actions">
-      <button class="action-btn delete" onclick={() => onDelete(annotation.id)}>Delete</button>
+      <button class="action-btn delete" onclick={() => onDelete(annotation.id)}
+        >Delete</button
+      >
     </div>
   {/if}
 </div>
