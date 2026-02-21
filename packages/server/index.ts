@@ -5,6 +5,7 @@ interface ServerOptions {
   plan: string;
   permissionMode: string;
   previousPlans?: PlanVersion[];
+  version?: string;
   onApprove: (feedback: string) => void;
   onDeny: (feedback: string) => void;
 }
@@ -28,6 +29,7 @@ export function startServer(options: ServerOptions): {
         return Response.json({
           plan: options.plan,
           permissionMode: options.permissionMode,
+          version: options.version || "dev",
         });
       }
 

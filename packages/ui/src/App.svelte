@@ -10,6 +10,7 @@
   let blocks = $state<Block[]>([]);
   let annotations = $state<Annotation[]>([]);
   let versions = $state<PlanVersion[]>([]);
+  let version = $state("");
   let showDiff = $state(false);
   let loading = $state(true);
   let error = $state("");
@@ -33,10 +34,11 @@
       fetch("/api/plan").then((r) => r.json()),
       fetch("/api/history").then((r) => r.json()),
     ])
-      .then(([data, history]: [PlanData, PlanVersion[]]) => {
+      .then(([data, history]: [PlanData & { version?: string }, PlanVersion[]]) => {
         plan = data.plan;
         blocks = parseMarkdown(data.plan);
         versions = history;
+        version = data.version || "";
         loading = false;
       })
       .catch(() => {
@@ -92,6 +94,7 @@
   {/if}
   <Toolbar
     {title}
+    {version}
     commentCount={annotations.length}
     versionCount={versions.length + 1}
     {theme}

@@ -1,6 +1,7 @@
 <script lang="ts">
   interface Props {
     title: string;
+    version?: string;
     commentCount: number;
     versionCount: number;
     theme: "dark" | "light";
@@ -12,6 +13,7 @@
 
   let {
     title,
+    version = "",
     commentCount,
     versionCount,
     theme,
@@ -25,6 +27,9 @@
 <header class="toolbar">
   <div class="toolbar-left">
     <span class="toolbar-title">{title}</span>
+    {#if version && version !== "dev"}
+      <span class="version">{version}</span>
+    {/if}
     {#if commentCount > 0}
       <span class="badge"
         >{commentCount} comment{commentCount !== 1 ? "s" : ""}</span
@@ -74,6 +79,11 @@
     font-weight: 600;
     font-size: 1rem;
     color: var(--color-text-emphasis);
+  }
+  .version {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-weight: 400;
   }
   .badge {
     background: var(--color-border);

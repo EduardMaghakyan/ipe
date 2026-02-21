@@ -1,6 +1,9 @@
 import { startServer } from "../../../packages/server/index.ts";
 import { openBrowser } from "../../../packages/server/browser.ts";
 import { loadHistory, saveVersion } from "../../../packages/server/history.ts";
+import { checkForUpdate } from "../../../packages/server/update.ts";
+
+const VERSION = "dev";
 
 interface HookInput {
   tool_input: {
@@ -61,11 +64,20 @@ async function main() {
     previousPlans = loadHistory(sessionId).filter((v) => v.plan !== plan);
   }
 
+  checkForUpdate(VERSION).then((latest) => {
+    if (latest) {
+      console.error(
+        `\nIPE ${latest} is available (current: ${VERSION}). Upgrade: curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash\n`,
+      );
+    }
+  });
+
   const done = new Promise<void>((resolve) => {
     const { port } = startServer({
       plan,
       permissionMode,
       previousPlans,
+      version: VERSION,
       onApprove(feedback: string) {
         outputDecision("allow", feedback);
         resolve();
@@ -77,7 +89,7 @@ async function main() {
     });
 
     const url = `http://localhost:${port}`;
-    console.error(`IPE server running at ${url}`);
+    console.error(`IPE ${VERSION} running at ${url}`);
     openBrowser(url);
   });
 
