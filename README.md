@@ -4,29 +4,7 @@ Review Claude Code plans in a browser UI with inline comments, like a GitHub PR 
 
 ## How It Works
 
-```
-Claude Code (ExitPlanMode)
-    │  plan JSON via stdin
-    ▼
-IPE binary (standalone, blocks until resolved)
-    │
-    ├── HTTP Server (random port)
-    │     GET  /             → single-file UI
-    │     GET  /api/plan     → plan data
-    │     POST /api/approve  → allow
-    │     POST /api/deny     → deny + feedback
-    │
-    └── Opens browser automatically
-          │
-          ▼
-    Browser UI (Svelte SPA)
-    ├── Read the plan with syntax-highlighted code blocks
-    ├── Select text → "Add Comment" → write inline feedback
-    └── Click "Approve" or "Request Changes"
-          │
-          ▼
-    stdout → hook decision JSON → Claude Code continues
-```
+When Claude Code calls `ExitPlanMode`, IPE intercepts the request via a hook. It starts a local server, opens a browser tab where you can review the plan, add inline comments, and approve or request changes. Your decision and feedback are sent back to Claude Code automatically.
 
 ## Install
 
