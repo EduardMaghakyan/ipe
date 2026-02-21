@@ -30,30 +30,56 @@ IPE binary (standalone, blocks until resolved)
 
 ## Install
 
-One command to install IPE and register it as a global Claude Code hook:
+### macOS / Linux
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash
 ```
 
-This downloads a prebuilt binary to `~/.ipe/ipe` and adds the hook to `~/.claude/settings.json`. Run it again to update.
+### Windows (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.ps1 | iex
+```
+
+This downloads a prebuilt binary and registers it as a Claude Code hook. Run it again to update.
 
 To pin a specific version:
 
 ```sh
+# macOS / Linux
 IPE_VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash
+
+# Windows (PowerShell)
+$env:IPE_VERSION="v0.1.0"; irm https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.ps1 | iex
 ```
 
-**Supported platforms:** macOS (arm64, x64), Linux (x64).
+**Supported platforms:** macOS (arm64, x64), Linux (x64), Windows (x64).
 
 ### Manual Setup
 
 Download the binary for your platform from [Releases](https://github.com/eduardmaghakyan/ipe/releases):
 
+| Platform    | Binary                |
+| ----------- | --------------------- |
+| macOS arm64 | `ipe-darwin-arm64`    |
+| macOS x64   | `ipe-darwin-x64`      |
+| Linux x64   | `ipe-linux-x64`       |
+| Windows x64 | `ipe-windows-x64.exe` |
+
+**macOS / Linux:**
+
 ```sh
 mkdir -p ~/.ipe
 curl -fSL https://github.com/eduardmaghakyan/ipe/releases/latest/download/ipe-darwin-arm64 -o ~/.ipe/ipe
 chmod +x ~/.ipe/ipe
+```
+
+**Windows (PowerShell):**
+
+```powershell
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.ipe" | Out-Null
+Invoke-WebRequest -Uri "https://github.com/eduardmaghakyan/ipe/releases/latest/download/ipe-windows-x64.exe" -OutFile "$env:USERPROFILE\.ipe\ipe.exe"
 ```
 
 Then add the hook to your Claude Code settings (`~/.claude/settings.json` for global, `.claude/settings.json` for project-level, or `.claude/settings.local.json` for local-only):
@@ -76,6 +102,8 @@ Then add the hook to your Claude Code settings (`~/.claude/settings.json` for gl
   }
 }
 ```
+
+On Windows, use the full path: `"command": "C:\\Users\\<you>\\.ipe\\ipe.exe"`
 
 **Key details:**
 
@@ -102,33 +130,6 @@ Then add the hook to your Claude Code settings (`~/.claude/settings.json` for gl
 Platform defaults: `open` (macOS), `xdg-open` (Linux), `cmd /c start` (Windows).
 
 The UI supports light and dark themes — toggle with the sun/moon button in the toolbar. Your preference is saved across sessions.
-
-## Project Structure
-
-```
-ipe/
-├── apps/hook/
-│   └── server/index.ts          # Entry point — reads stdin, starts server, outputs decision
-├── packages/
-│   ├── server/
-│   │   ├── index.ts             # HTTP server (serves UI + API)
-│   │   └── browser.ts           # Cross-platform browser opener
-│   └── ui/
-│       ├── src/
-│       │   ├── App.svelte       # Root component — plan fetching, approve/deny flow
-│       │   ├── lib/
-│       │   │   ├── Toolbar.svelte         # Top bar with title + action buttons
-│       │   │   ├── PlanViewer.svelte      # Renders plan blocks, handles text selection
-│       │   │   ├── SelectionPopup.svelte  # "Add Comment" floating button
-│       │   │   └── InlineComment.svelte   # Annotation editor widget
-│       │   └── utils/
-│       │       ├── parser.ts    # Markdown → Block[] (no external deps)
-│       │       └── feedback.ts  # Annotations → feedback string
-│       └── dist/index.html      # Built single-file bundle
-├── install.sh                   # One-command installer
-├── package.json                 # Bun workspaces root
-└── tsconfig.json
-```
 
 ## Development
 
@@ -173,8 +174,16 @@ bun run format:check  # check only
 
 ## Uninstall
 
+**macOS / Linux:**
+
 ```sh
 rm -rf ~/.ipe
+```
+
+**Windows (PowerShell):**
+
+```powershell
+Remove-Item -Recurse -Force "$env:USERPROFILE\.ipe"
 ```
 
 Then remove the `ExitPlanMode` hook entry from `~/.claude/settings.json`.

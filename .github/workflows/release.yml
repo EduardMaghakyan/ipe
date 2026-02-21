@@ -27,10 +27,16 @@ jobs:
         include:
           - os: macos-latest
             target: darwin-arm64
+            ext: ""
           - os: macos-13
             target: darwin-x64
+            ext: ""
           - os: ubuntu-latest
             target: linux-x64
+            ext: ""
+          - os: windows-latest
+            target: windows-x64
+            ext: ".exe"
 
     runs-on: ${{ matrix.os }}
 
@@ -45,10 +51,13 @@ jobs:
 
       - run: bun run build
 
-      - run: mv ipe ipe-${{ matrix.target }}
+      - name: Rename binary
+        shell: bash
+        run: mv ipe${{ matrix.ext }} ipe-${{ matrix.target }}${{ matrix.ext }}
 
       - name: Upload release asset
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
-        run: gh release upload "$TAG_NAME" ipe-${{ matrix.target }} --clobber
+        run: gh release upload "$TAG_NAME" ipe-${{ matrix.target }}${{ matrix.ext }} --clobber
