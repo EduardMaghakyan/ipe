@@ -6,6 +6,7 @@
     "apps/*"
   ],
   "scripts": {
+    "build": "cd packages/ui && bun run build && cd ../.. && bun build apps/hook/server/index.ts --compile --outfile ipe",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "bun test tests/unit tests/integration",

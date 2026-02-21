@@ -4,3 +4,4 @@ bun.lock
 .DS_Store
 test-results/
 playwright-report/
+/ipe

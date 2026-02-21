@@ -8,7 +8,7 @@ Review Claude Code plans in a browser UI with inline comments, like a GitHub PR 
 Claude Code (ExitPlanMode)
     │  plan JSON via stdin
     ▼
-Hook Server (Bun process, blocks until resolved)
+IPE binary (standalone, blocks until resolved)
     │
     ├── HTTP Server (random port)
     │     GET  /             → single-file UI
@@ -30,24 +30,30 @@ Hook Server (Bun process, blocks until resolved)
 
 ## Install
 
-**Prerequisites:** [Bun](https://bun.sh)
-
 One command to install IPE and register it as a global Claude Code hook:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash
 ```
 
-This clones IPE to `~/.ipe`, builds the UI, and adds the hook to `~/.claude/settings.json`. Run it again to update.
+This downloads a prebuilt binary to `~/.ipe/ipe` and adds the hook to `~/.claude/settings.json`. Run it again to update.
+
+To pin a specific version:
+
+```sh
+IPE_VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash
+```
+
+**Supported platforms:** macOS (arm64, x64), Linux (x64).
 
 ### Manual Setup
 
-If you prefer to install manually:
+Download the binary for your platform from [Releases](https://github.com/eduardmaghakyan/ipe/releases):
 
 ```sh
-git clone https://github.com/eduardmaghakyan/ipe.git ~/.ipe
-cd ~/.ipe && bun install
-cd packages/ui && bun run build
+mkdir -p ~/.ipe
+curl -fSL https://github.com/eduardmaghakyan/ipe/releases/latest/download/ipe-darwin-arm64 -o ~/.ipe/ipe
+chmod +x ~/.ipe/ipe
 ```
 
 Then add the hook to your Claude Code settings (`~/.claude/settings.json` for global, `.claude/settings.json` for project-level, or `.claude/settings.local.json` for local-only):
@@ -61,7 +67,7 @@ Then add the hook to your Claude Code settings (`~/.claude/settings.json` for gl
         "hooks": [
           {
             "type": "command",
-            "command": "bun ~/.ipe/apps/hook/server/index.ts",
+            "command": "~/.ipe/ipe",
             "timeout": 345600
           }
         ]
@@ -105,7 +111,7 @@ ipe/
 │   └── server/index.ts          # Entry point — reads stdin, starts server, outputs decision
 ├── packages/
 │   ├── server/
-│   │   ├── index.ts             # Bun HTTP server (serves UI + API)
+│   │   ├── index.ts             # HTTP server (serves UI + API)
 │   │   └── browser.ts           # Cross-platform browser opener
 │   └── ui/
 │       ├── src/
@@ -126,6 +132,8 @@ ipe/
 
 ## Development
 
+Requires [Bun](https://bun.sh) for development.
+
 **Dev preview** — run the UI with Vite dev server and mock API (HMR, no hook server needed):
 
 ```sh
@@ -134,23 +142,26 @@ cd packages/ui && bun run dev
 
 Opens at `http://localhost:5173` with a sample plan. Approve/Deny actions log to the terminal.
 
-**Manual testing** — pipe a fake plan into the hook server:
+**Build** — compile the standalone binary:
 
 ```sh
-echo '{"tool_input":{"plan":"# Test Plan\n\n## Step 1\nDo something\n\n## Step 2\nDo something else"},"permission_mode":"default"}' | bun apps/hook/server/index.ts
+bun run build
 ```
 
-This should:
+Produces `./ipe` — a self-contained executable that embeds the Bun runtime and the built UI.
 
-- Open a browser tab with the plan rendered
-- Let you select text and add inline comments
-- Output `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}` on approve
-- Output `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"..."}}}` on deny
-
-**Rebuild the UI** after making changes to `packages/ui/`:
+**Manual testing** — pipe a fake plan into the binary:
 
 ```sh
-cd packages/ui && bun run build
+printf '{"tool_input":{"plan":"# Test Plan\\n\\n## Step 1\\nDo something"},"permission_mode":"default"}' | ./ipe
+```
+
+**Tests:**
+
+```sh
+bun run test       # unit + integration tests
+bun run test:e2e   # Playwright browser tests
+bun run test:all   # everything
 ```
 
 **Formatting:**
