@@ -1,13 +1,16 @@
 <script lang="ts">
-  import type { Annotation, Block, PlanData } from "./types";
+  import type { Annotation, Block, PlanData, PlanVersion } from "./types";
   import { parseMarkdown } from "./utils/parser";
   import { formatFeedback } from "./utils/feedback";
   import Toolbar from "./lib/Toolbar.svelte";
   import PlanViewer from "./lib/PlanViewer.svelte";
+  import DiffOverlay from "./lib/DiffOverlay.svelte";
 
   let plan = $state("");
   let blocks = $state<Block[]>([]);
   let annotations = $state<Annotation[]>([]);
+  let versions = $state<PlanVersion[]>([]);
+  let showDiff = $state(false);
   let loading = $state(true);
   let submitting = $state(false);
   let generalComment = $state("");
@@ -25,13 +28,15 @@
   }
 
   $effect(() => {
-    fetch("/api/plan")
-      .then((r) => r.json())
-      .then((data: PlanData) => {
-        plan = data.plan;
-        blocks = parseMarkdown(data.plan);
-        loading = false;
-      });
+    Promise.all([
+      fetch("/api/plan").then((r) => r.json()),
+      fetch("/api/history").then((r) => r.json()),
+    ]).then(([data, history]: [PlanData, PlanVersion[]]) => {
+      plan = data.plan;
+      blocks = parseMarkdown(data.plan);
+      versions = history;
+      loading = false;
+    });
   });
 
   function addAnnotation(annotation: Annotation) {
@@ -82,11 +87,20 @@
 {:else if submitting}
   <div class="loading">Submitting... you can close this tab.</div>
 {:else}
+  {#if showDiff}
+    <DiffOverlay
+      currentPlan={plan}
+      {versions}
+      onClose={() => (showDiff = false)}
+    />
+  {/if}
   <Toolbar
     title={title()}
     commentCount={annotations.length}
+    versionCount={versions.length + 1}
     {theme}
     onToggleTheme={toggleTheme}
+    onCompare={() => (showDiff = true)}
     onApprove={handleApprove}
     onDeny={handleDeny}
   />

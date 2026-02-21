@@ -1,8 +1,10 @@
 import html from "../ui/dist/index.html" with { type: "text" };
+import type { PlanVersion } from "./history";
 
 interface ServerOptions {
   plan: string;
   permissionMode: string;
+  previousPlans?: PlanVersion[];
   onApprove: (feedback: string) => void;
   onDeny: (feedback: string) => void;
 }
@@ -27,6 +29,10 @@ export function startServer(options: ServerOptions): {
           plan: options.plan,
           permissionMode: options.permissionMode,
         });
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/history") {
+        return Response.json(options.previousPlans ?? []);
       }
 
       if (req.method === "POST" && url.pathname === "/api/approve") {

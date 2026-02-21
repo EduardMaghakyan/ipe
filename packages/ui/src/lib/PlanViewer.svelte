@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Annotation, Block } from "../types";
+  import { isDiffContent } from "../utils/diff";
   import SelectionPopup from "./SelectionPopup.svelte";
   import InlineComment from "./InlineComment.svelte";
 
@@ -117,17 +118,6 @@
     const level = match[1].length;
     const text = renderInlineMarkdown(match[2]);
     return `<h${level}>${text}</h${level}>`;
-  }
-
-  function isDiffContent(lang: string, codeLines: string[]): boolean {
-    if (lang === "diff") return true;
-    let diffLineCount = 0;
-    for (const line of codeLines) {
-      if (/^[+-][^+-]/.test(line) || line === "+" || line === "-") {
-        diffLineCount++;
-      }
-    }
-    return diffLineCount >= 2;
   }
 
   function renderCode(block: Block): string {

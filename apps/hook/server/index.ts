@@ -1,11 +1,13 @@
 import { startServer } from "../../../packages/server/index.ts";
 import { openBrowser } from "../../../packages/server/browser.ts";
+import { loadHistory, saveVersion } from "../../../packages/server/history.ts";
 
 interface HookInput {
   tool_input: {
     plan?: string;
     [key: string]: unknown;
   };
+  session_id?: string;
   permission_mode?: string;
   [key: string]: unknown;
 }
@@ -55,16 +57,25 @@ async function main() {
 
   const plan = input.tool_input?.plan || "";
   const permissionMode = input.permission_mode || "default";
+  const sessionId = input.session_id || "";
 
   if (!plan) {
     console.error("No plan found in stdin input");
     process.exit(1);
   }
 
+  // Save current plan version and load history
+  let previousPlans: Awaited<ReturnType<typeof loadHistory>> = [];
+  if (sessionId) {
+    saveVersion(sessionId, plan);
+    previousPlans = loadHistory(sessionId).filter((v) => v.plan !== plan);
+  }
+
   const done = new Promise<void>((resolve) => {
     const { port } = startServer({
       plan,
       permissionMode,
+      previousPlans,
       onApprove(feedback: string) {
         outputAllow(feedback);
         resolve();
