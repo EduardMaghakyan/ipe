@@ -1,0 +1,296 @@
+<script lang="ts">
+  import type { Annotation, Block } from "../types";
+  import SelectionPopup from "./SelectionPopup.svelte";
+  import InlineComment from "./InlineComment.svelte";
+
+  interface Props {
+    blocks: Block[];
+    annotations: Annotation[];
+    onAddAnnotation: (a: Annotation) => void;
+    onRemoveAnnotation: (id: string) => void;
+    onUpdateAnnotation: (id: string, comment: string) => void;
+  }
+
+  let { blocks, annotations, onAddAnnotation, onRemoveAnnotation, onUpdateAnnotation }: Props =
+    $props();
+
+  let popup = $state<{ x: number; y: number; blockId: string; text: string } | null>(null);
+  let editingId = $state<string | null>(null);
+
+  function handleMouseUp(blockId: string) {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+      popup = null;
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    popup = {
+      x: rect.left + rect.width / 2,
+      y: rect.top,
+      blockId,
+      text: sel.toString().trim(),
+    };
+  }
+
+  function handleAddComment() {
+    if (!popup) return;
+    const id = `ann-${Date.now()}`;
+    onAddAnnotation({
+      id,
+      blockId: popup.blockId,
+      selectedText: popup.text,
+      comment: "",
+    });
+    editingId = id;
+    popup = null;
+    window.getSelection()?.removeAllRanges();
+  }
+
+  function handleSave(id: string, comment: string) {
+    onUpdateAnnotation(id, comment);
+    editingId = null;
+  }
+
+  function handleCancel(id: string) {
+    const ann = annotations.find((a) => a.id === id);
+    if (ann && !ann.comment) {
+      onRemoveAnnotation(id);
+    }
+    editingId = null;
+  }
+
+  function handleDocumentClick(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    if (!target.closest(".popup") && !window.getSelection()?.toString().trim()) {
+      popup = null;
+    }
+  }
+
+  function getBlockAnnotations(blockId: string): Annotation[] {
+    return annotations.filter((a) => a.blockId === blockId);
+  }
+
+  function hasAnnotation(blockId: string): boolean {
+    return annotations.some((a) => a.blockId === blockId);
+  }
+
+  function renderInlineMarkdown(text: string): string {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/`(.+?)`/g, '<code class="inline-code">$1</code>')
+      .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>');
+  }
+
+  function renderHeading(block: Block): string {
+    const match = block.content.match(/^(#{1,6})\s+(.*)/);
+    if (!match) return block.content;
+    const level = match[1].length;
+    const text = renderInlineMarkdown(match[2]);
+    return `<h${level}>${text}</h${level}>`;
+  }
+
+  function renderCode(block: Block): string {
+    const lines = block.content.split("\n");
+    const firstLine = lines[0].trim();
+    const lang = firstLine.replace(/^```/, "").trim();
+    const code = lines.slice(1, -1).join("\n");
+    return `<pre><code${lang ? ` class="language-${lang}"` : ""}>${code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</code></pre>`;
+  }
+
+  function renderList(block: Block): string {
+    const lines = block.content.split("\n");
+    const isOrdered = /^\s*\d+\.\s/.test(lines[0]);
+    const items = lines.map((l) => {
+      const text = l.replace(/^\s*[-*+]\s+/, "").replace(/^\s*\d+\.\s+/, "");
+      return `<li>${renderInlineMarkdown(text)}</li>`;
+    });
+    const tag = isOrdered ? "ol" : "ul";
+    return `<${tag}>${items.join("")}</${tag}>`;
+  }
+
+  function renderBlockquote(block: Block): string {
+    const text = block.content
+      .split("\n")
+      .map((l) => l.replace(/^>\s?/, ""))
+      .join("\n");
+    return `<blockquote>${renderInlineMarkdown(text)}</blockquote>`;
+  }
+
+  function renderTable(block: Block): string {
+    const lines = block.content.split("\n").filter((l) => l.trim());
+    if (lines.length < 2) return `<p>${block.content}</p>`;
+
+    const parseRow = (line: string) =>
+      line
+        .split("|")
+        .map((c) => c.trim())
+        .filter((c) => c);
+
+    const headers = parseRow(lines[0]);
+    const rows = lines.slice(2).map(parseRow);
+
+    let html = "<table><thead><tr>";
+    headers.forEach((h) => (html += `<th>${renderInlineMarkdown(h)}</th>`));
+    html += "</tr></thead><tbody>";
+    rows.forEach((row) => {
+      html += "<tr>";
+      row.forEach((cell) => (html += `<td>${renderInlineMarkdown(cell)}</td>`));
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    return html;
+  }
+
+  function renderBlock(block: Block): string {
+    switch (block.type) {
+      case "heading":
+        return renderHeading(block);
+      case "code":
+        return renderCode(block);
+      case "list":
+        return renderList(block);
+      case "blockquote":
+        return renderBlockquote(block);
+      case "table":
+        return renderTable(block);
+      case "paragraph":
+        return `<p>${renderInlineMarkdown(block.content)}</p>`;
+    }
+  }
+</script>
+
+<svelte:document onclick={handleDocumentClick} />
+
+{#if popup}
+  <SelectionPopup x={popup.x} y={popup.y} onAddComment={handleAddComment} />
+{/if}
+
+<div class="plan-viewer">
+  {#each blocks as block (block.id)}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div
+      class="block {block.type}"
+      class:annotated={hasAnnotation(block.id)}
+      role="region"
+      onmouseup={() => handleMouseUp(block.id)}
+    >
+      {@html renderBlock(block)}
+    </div>
+    {#each getBlockAnnotations(block.id) as ann (ann.id)}
+      <InlineComment
+        annotation={ann}
+        editing={editingId === ann.id}
+        onSave={handleSave}
+        onCancel={handleCancel}
+        onDelete={onRemoveAnnotation}
+        onEdit={(id) => (editingId = id)}
+      />
+    {/each}
+  {/each}
+</div>
+
+<style>
+  .plan-viewer {
+    font-size: 0.95rem;
+  }
+  .block {
+    position: relative;
+    padding: 2px 4px;
+    border-radius: 4px;
+    border-left: 3px solid transparent;
+    transition: border-color 0.15s;
+  }
+  .block.annotated {
+    border-left-color: #1f6feb;
+    background: rgba(31, 111, 235, 0.05);
+  }
+  .block :global(h1) {
+    font-size: 1.75rem;
+    margin: 24px 0 12px;
+    color: #e6edf3;
+    border-bottom: 1px solid #21262d;
+    padding-bottom: 8px;
+  }
+  .block :global(h2) {
+    font-size: 1.4rem;
+    margin: 20px 0 10px;
+    color: #e6edf3;
+  }
+  .block :global(h3) {
+    font-size: 1.15rem;
+    margin: 16px 0 8px;
+    color: #e6edf3;
+  }
+  .block :global(h4),
+  .block :global(h5),
+  .block :global(h6) {
+    font-size: 1rem;
+    margin: 12px 0 6px;
+    color: #e6edf3;
+  }
+  .block :global(p) {
+    margin: 8px 0;
+  }
+  .block :global(pre) {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 16px;
+    overflow-x: auto;
+    margin: 12px 0;
+  }
+  .block :global(code) {
+    font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+  }
+  .block :global(.inline-code) {
+    background: #1c2128;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.85em;
+  }
+  .block :global(ul),
+  .block :global(ol) {
+    padding-left: 24px;
+    margin: 8px 0;
+  }
+  .block :global(li) {
+    margin: 4px 0;
+  }
+  .block :global(blockquote) {
+    border-left: 3px solid #30363d;
+    padding: 4px 16px;
+    color: #8b949e;
+    margin: 8px 0;
+  }
+  .block :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+  }
+  .block :global(th),
+  .block :global(td) {
+    border: 1px solid #30363d;
+    padding: 8px 12px;
+    text-align: left;
+  }
+  .block :global(th) {
+    background: #161b22;
+    font-weight: 600;
+  }
+  .block :global(a) {
+    color: #58a6ff;
+    text-decoration: none;
+  }
+  .block :global(a:hover) {
+    text-decoration: underline;
+  }
+  .block :global(strong) {
+    color: #e6edf3;
+  }
+</style>

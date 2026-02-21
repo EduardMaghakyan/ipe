@@ -1,0 +1,9 @@
+{
+  "name": "@ipe/server",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./browser": "./browser.ts"
+  }
+}

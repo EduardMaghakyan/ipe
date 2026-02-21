@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [{ "type": "command", "command": "ipe", "timeout": 345600 }]
+      }
+    ]
+  }
+}

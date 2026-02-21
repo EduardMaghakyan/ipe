@@ -1,0 +1,5 @@
+{
+  "name": "ipe",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"]
+}
