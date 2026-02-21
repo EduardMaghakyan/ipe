@@ -7,9 +7,13 @@
   ],
   "scripts": {
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test": "bun test tests/unit tests/integration",
+    "test:e2e": "bunx playwright test",
+    "test:all": "bun test tests/unit tests/integration && bunx playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "prettier": "^3.8.1",
     "prettier-plugin-svelte": "^3.5.0"
   }

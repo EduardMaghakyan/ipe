@@ -1,3 +1,5 @@
 node_modules
 dist
 bun.lock
+test-results
+playwright-report
