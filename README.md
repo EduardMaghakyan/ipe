@@ -81,10 +81,11 @@ Then add the hook to your Claude Code settings (`~/.claude/settings.json` for gl
 
 1. Work with Claude Code normally. When Claude generates a plan and calls `ExitPlanMode`, IPE intercepts the request.
 2. A browser tab opens automatically showing the plan.
-3. **Add comments:** Select any text in the plan → click the "Add Comment" popup → write your feedback.
-4. **Approve:** Click the green "Approve" button. Claude proceeds with the plan.
-5. **Request Changes:** Click the amber "Request Changes" button. Your inline comments are formatted as structured feedback and sent back to Claude.
-6. You can close the browser tab after submitting — the server shuts down automatically.
+3. **Add comments:** Select any text → click "Add Comment", or hover a block and click the "+" button in the left gutter.
+4. **General feedback:** Use the text area at the bottom of the plan for comments not tied to a specific block.
+5. **Approve:** Click the green "Approve" button. Claude proceeds with the plan.
+6. **Request Changes:** Click the amber "Request Changes" button. Your inline comments and general feedback are sent back to Claude.
+7. The browser tab closes automatically after submitting.
 
 ## Configuration
 
@@ -93,6 +94,8 @@ Then add the hook to your Claude Code settings (`~/.claude/settings.json` for gl
 | `IPE_BROWSER` | Command to open the browser (e.g. `firefox`, `google-chrome`) | Platform default |
 
 Platform defaults: `open` (macOS), `xdg-open` (Linux), `cmd /c start` (Windows).
+
+The UI supports light and dark themes — toggle with the sun/moon button in the toolbar. Your preference is saved across sessions.
 
 ## Project Structure
 
@@ -122,6 +125,14 @@ ipe/
 ```
 
 ## Development
+
+**Dev preview** — run the UI with Vite dev server and mock API (HMR, no hook server needed):
+
+```sh
+cd packages/ui && bun run dev
+```
+
+Opens at `http://localhost:5173` with a sample plan. Approve/Deny actions log to the terminal.
 
 **Manual testing** — pipe a fake plan into the hook server:
 

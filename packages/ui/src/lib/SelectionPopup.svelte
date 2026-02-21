@@ -20,7 +20,7 @@
     margin-top: -8px;
   }
   .popup-btn {
-    background: #1f6feb;
+    background: var(--color-accent);
     color: #fff;
     border: none;
     padding: 6px 12px;
@@ -29,9 +29,9 @@
     font-weight: 500;
     cursor: pointer;
     white-space: nowrap;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 12px var(--color-shadow);
   }
   .popup-btn:hover {
-    background: #388bfd;
+    background: var(--color-accent-hover);
   }
 </style>

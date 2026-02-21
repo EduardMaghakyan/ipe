@@ -2,11 +2,14 @@
   interface Props {
     title: string;
     commentCount: number;
+    theme: "dark" | "light";
+    onToggleTheme: () => void;
     onApprove: () => void;
     onDeny: () => void;
   }
 
-  let { title, commentCount, onApprove, onDeny }: Props = $props();
+  let { title, commentCount, theme, onToggleTheme, onApprove, onDeny }: Props =
+    $props();
 </script>
 
 <header class="toolbar">
@@ -19,6 +22,17 @@
     {/if}
   </div>
   <div class="toolbar-right">
+    <button
+      class="btn btn-theme"
+      onclick={onToggleTheme}
+      aria-label="Toggle theme"
+    >
+      {#if theme === "dark"}
+        ☀
+      {:else}
+        ☾
+      {/if}
+    </button>
     <button class="btn btn-deny" onclick={onDeny}>Request Changes</button>
     <button class="btn btn-approve" onclick={onApprove}>Approve</button>
   </div>
@@ -35,8 +49,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 24px;
-    background: #161b22;
-    border-bottom: 1px solid #30363d;
+    background: var(--color-bg-subtle);
+    border-bottom: 1px solid var(--color-border);
   }
   .toolbar-left {
     display: flex;
@@ -46,11 +60,11 @@
   .toolbar-title {
     font-weight: 600;
     font-size: 1rem;
-    color: #e6edf3;
+    color: var(--color-text-emphasis);
   }
   .badge {
-    background: #30363d;
-    color: #8b949e;
+    background: var(--color-border);
+    color: var(--color-text-muted);
     padding: 2px 8px;
     border-radius: 10px;
     font-size: 0.75rem;
@@ -69,19 +83,31 @@
     transition: background 0.15s;
   }
   .btn-approve {
-    background: #238636;
+    background: var(--color-approve-bg);
     color: #fff;
-    border-color: #2ea043;
+    border-color: var(--color-approve-border);
   }
   .btn-approve:hover {
-    background: #2ea043;
+    background: var(--color-approve-hover);
   }
   .btn-deny {
     background: transparent;
-    color: #d29922;
-    border-color: #d29922;
+    color: var(--color-deny-text);
+    border-color: var(--color-deny-text);
   }
   .btn-deny:hover {
-    background: rgba(210, 153, 34, 0.1);
+    background: var(--color-deny-hover-bg);
+  }
+  .btn-theme {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    padding: 6px 10px;
+    font-size: 1rem;
+    line-height: 1;
+  }
+  .btn-theme:hover {
+    background: var(--color-bg-overlay);
+    color: var(--color-text-default);
   }
 </style>

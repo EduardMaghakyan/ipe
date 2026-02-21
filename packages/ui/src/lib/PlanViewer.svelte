@@ -57,6 +57,18 @@
     window.getSelection()?.removeAllRanges();
   }
 
+  function handlePlusClick(blockId: string) {
+    const block = blocks.find((b) => b.id === blockId);
+    const id = `ann-${Date.now()}`;
+    onAddAnnotation({
+      id,
+      blockId,
+      selectedText: block?.content ?? "",
+      comment: "",
+    });
+    editingId = id;
+  }
+
   function handleSave(id: string, comment: string) {
     onUpdateAnnotation(id, comment);
     editingId = null;
@@ -192,6 +204,11 @@
       role="region"
       onmouseup={() => handleMouseUp(block.id)}
     >
+      <button
+        class="add-comment-btn"
+        onclick={() => handlePlusClick(block.id)}
+        aria-label="Add comment to block">+</button
+      >
       {@html renderBlock(block)}
     </div>
     {#each getBlockAnnotations(block.id) as ann (ann.id)}
@@ -213,45 +230,91 @@
   }
   .block {
     position: relative;
-    padding: 2px 4px;
+    padding: 2px 4px 2px 4px;
     border-radius: 4px;
     border-left: 3px solid transparent;
-    transition: border-color 0.15s;
+    transition:
+      border-color 0.15s,
+      background 0.15s;
+  }
+  /* Extend hover hit area into the left gutter */
+  .block::before {
+    content: "";
+    position: absolute;
+    left: -32px;
+    top: 0;
+    width: 32px;
+    height: 100%;
   }
   .block.annotated {
-    border-left-color: #1f6feb;
-    background: rgba(31, 111, 235, 0.05);
+    border-left-color: var(--color-annotated-border);
+    background: var(--color-annotated-bg);
+  }
+  .add-comment-btn {
+    position: absolute;
+    left: -28px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg-subtle);
+    color: var(--color-accent);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    opacity: 0;
+    transition:
+      opacity 0.1s,
+      background 0.1s,
+      color 0.1s,
+      border-color 0.1s;
+    z-index: 10;
+  }
+  .block:hover .add-comment-btn {
+    opacity: 1;
+  }
+  .add-comment-btn:hover {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: #fff;
   }
   .block :global(h1) {
     font-size: 1.75rem;
     margin: 24px 0 12px;
-    color: #e6edf3;
-    border-bottom: 1px solid #21262d;
+    color: var(--color-text-emphasis);
+    border-bottom: 1px solid var(--color-border-muted);
     padding-bottom: 8px;
   }
   .block :global(h2) {
     font-size: 1.4rem;
     margin: 20px 0 10px;
-    color: #e6edf3;
+    color: var(--color-text-emphasis);
   }
   .block :global(h3) {
     font-size: 1.15rem;
     margin: 16px 0 8px;
-    color: #e6edf3;
+    color: var(--color-text-emphasis);
   }
   .block :global(h4),
   .block :global(h5),
   .block :global(h6) {
     font-size: 1rem;
     margin: 12px 0 6px;
-    color: #e6edf3;
+    color: var(--color-text-emphasis);
   }
   .block :global(p) {
     margin: 8px 0;
   }
   .block :global(pre) {
-    background: #161b22;
-    border: 1px solid #30363d;
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-border);
     border-radius: 6px;
     padding: 16px;
     overflow-x: auto;
@@ -263,7 +326,7 @@
     font-size: 0.85rem;
   }
   .block :global(.inline-code) {
-    background: #1c2128;
+    background: var(--color-bg-inset);
     padding: 2px 6px;
     border-radius: 3px;
     font-size: 0.85em;
@@ -277,9 +340,9 @@
     margin: 4px 0;
   }
   .block :global(blockquote) {
-    border-left: 3px solid #30363d;
+    border-left: 3px solid var(--color-border);
     padding: 4px 16px;
-    color: #8b949e;
+    color: var(--color-text-muted);
     margin: 8px 0;
   }
   .block :global(table) {
@@ -289,22 +352,22 @@
   }
   .block :global(th),
   .block :global(td) {
-    border: 1px solid #30363d;
+    border: 1px solid var(--color-border);
     padding: 8px 12px;
     text-align: left;
   }
   .block :global(th) {
-    background: #161b22;
+    background: var(--color-bg-subtle);
     font-weight: 600;
   }
   .block :global(a) {
-    color: #58a6ff;
+    color: var(--color-link);
     text-decoration: none;
   }
   .block :global(a:hover) {
     text-decoration: underline;
   }
   .block :global(strong) {
-    color: #e6edf3;
+    color: var(--color-text-emphasis);
   }
 </style>
