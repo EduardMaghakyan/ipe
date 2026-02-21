@@ -132,6 +132,11 @@
     --color-delete-hover-bg: rgba(248, 81, 73, 0.1);
     --color-annotated-border: #1f6feb;
     --color-annotated-bg: rgba(31, 111, 235, 0.05);
+    --color-diff-add-bg: rgba(35, 134, 54, 0.2);
+    --color-diff-add-text: #7ee787;
+    --color-diff-remove-bg: rgba(248, 81, 73, 0.2);
+    --color-diff-remove-text: #ffa198;
+    --color-diff-hunk: #bc8cff;
     --color-shadow: rgba(0, 0, 0, 0.4);
   }
 
@@ -157,6 +162,11 @@
     --color-delete-hover-bg: rgba(207, 34, 46, 0.1);
     --color-annotated-border: #0969da;
     --color-annotated-bg: rgba(9, 105, 218, 0.05);
+    --color-diff-add-bg: rgba(26, 127, 55, 0.15);
+    --color-diff-add-text: #116329;
+    --color-diff-remove-bg: rgba(207, 34, 46, 0.15);
+    --color-diff-remove-text: #82071e;
+    --color-diff-hunk: #6639ba;
     --color-shadow: rgba(0, 0, 0, 0.15);
   }
 

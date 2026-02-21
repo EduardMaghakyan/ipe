@@ -119,11 +119,46 @@
     return `<h${level}>${text}</h${level}>`;
   }
 
+  function isDiffContent(lang: string, codeLines: string[]): boolean {
+    if (lang === "diff") return true;
+    let diffLineCount = 0;
+    for (const line of codeLines) {
+      if (/^[+-][^+-]/.test(line) || line === "+" || line === "-") {
+        diffLineCount++;
+      }
+    }
+    return diffLineCount >= 2;
+  }
+
   function renderCode(block: Block): string {
     const lines = block.content.split("\n");
     const firstLine = lines[0].trim();
     const lang = firstLine.replace(/^```/, "").trim();
-    const code = lines.slice(1, -1).join("\n");
+    const codeLines = lines.slice(1, -1);
+
+    if (isDiffContent(lang, codeLines)) {
+      const rendered = codeLines
+        .map((line) => {
+          const escaped = line
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+          if (/^@@\s/.test(line)) {
+            return `<span class="diff-hunk">${escaped}</span>`;
+          }
+          if (line.startsWith("+")) {
+            return `<span class="diff-add">${escaped}</span>`;
+          }
+          if (line.startsWith("-")) {
+            return `<span class="diff-remove">${escaped}</span>`;
+          }
+          return `<span class="diff-context">${escaped}</span>`;
+        })
+        .join("\n");
+      return `<pre class="diff-block"><code>${rendered}</code></pre>`;
+    }
+
+    const code = codeLines.join("\n");
     return `<pre><code${lang ? ` class="language-${lang}"` : ""}>${code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</code></pre>`;
   }
 
@@ -359,6 +394,34 @@
   .block :global(th) {
     background: var(--color-bg-subtle);
     font-weight: 600;
+  }
+  .block :global(.diff-block) {
+    padding: 0;
+  }
+  .block :global(.diff-block code) {
+    display: block;
+    padding: 16px;
+  }
+  .block :global(.diff-add) {
+    display: inline-block;
+    width: 100%;
+    background: var(--color-diff-add-bg);
+    color: var(--color-diff-add-text);
+  }
+  .block :global(.diff-remove) {
+    display: inline-block;
+    width: 100%;
+    background: var(--color-diff-remove-bg);
+    color: var(--color-diff-remove-text);
+  }
+  .block :global(.diff-hunk) {
+    display: inline-block;
+    width: 100%;
+    color: var(--color-diff-hunk);
+  }
+  .block :global(.diff-context) {
+    display: inline-block;
+    width: 100%;
   }
   .block :global(a) {
     color: var(--color-link);
