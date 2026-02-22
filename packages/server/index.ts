@@ -299,6 +299,7 @@ export function startServer(options: ServerOptions = {}): {
           });
           await proc.exited;
           if (proc.exitCode === 0) {
+            options.latestVersion = undefined;
             return Response.json({ ok: true });
           }
           const stderr = await new Response(proc.stderr).text();
