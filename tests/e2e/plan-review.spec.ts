@@ -292,6 +292,52 @@ test.describe("Plan Review", () => {
     // Should show code content
     await expect(panel.locator(".snippet-code")).toBeVisible();
 
+    // Shiki syntax highlighting should render
+    await expect(panel.locator(".snippet-code .shiki")).toBeVisible({
+      timeout: 5000,
+    });
+
+    // Line gutter should show line numbers
+    await expect(panel.locator(".line-gutter")).toBeVisible();
+    await expect(panel.locator(".line-gutter .line-num").first()).toBeVisible();
+
+    // Resize handle should be present
+    const handle = panel.locator(".resize-handle");
+    await expect(handle).toBeAttached();
+
+    // Test resize: use page.evaluate to programmatically dispatch resize events
+    const widthBefore = await panel.evaluate(
+      (el) => el.getBoundingClientRect().width,
+    );
+    await panel.evaluate((el) => {
+      const handle = el.querySelector(".resize-handle") as HTMLElement;
+      handle.dispatchEvent(
+        new MouseEvent("mousedown", {
+          clientX: 640,
+          clientY: 400,
+          bubbles: true,
+        }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("mousemove", {
+          clientX: 490,
+          clientY: 400,
+          bubbles: true,
+        }),
+      );
+      window.dispatchEvent(
+        new MouseEvent("mouseup", {
+          clientX: 490,
+          clientY: 400,
+          bubbles: true,
+        }),
+      );
+    });
+    const widthAfter = await panel.evaluate(
+      (el) => el.getBoundingClientRect().width,
+    );
+    expect(widthAfter).toBeGreaterThan(widthBefore);
+
     // Close the panel
     await panel.locator(".snippet-close").click();
     await expect(panel).not.toBeVisible();

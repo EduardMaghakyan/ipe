@@ -75,7 +75,12 @@ export function parseMarkdown(markdown: string): Block[] {
         if (/^(\s*[-*+]|\s*\d+\.)\s/.test(lines[i])) {
           // New list item — flush current item
           const raw = itemLines.join("\n");
-          blocks.push({ id: `block-${blockIndex++}`, type: "list", content: raw, raw });
+          blocks.push({
+            id: `block-${blockIndex++}`,
+            type: "list",
+            content: raw,
+            raw,
+          });
           itemLines = [lines[i]];
           i++;
         } else if (lines[i].startsWith("  ") && lines[i].trim() !== "") {
@@ -88,7 +93,12 @@ export function parseMarkdown(markdown: string): Block[] {
       }
       // Flush last item
       const raw = itemLines.join("\n");
-      blocks.push({ id: `block-${blockIndex++}`, type: "list", content: raw, raw });
+      blocks.push({
+        id: `block-${blockIndex++}`,
+        type: "list",
+        content: raw,
+        raw,
+      });
       continue;
     }
 

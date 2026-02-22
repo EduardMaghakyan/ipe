@@ -265,7 +265,8 @@
   {#if error}
     <div class="error-banner" role="alert">
       <span>{error}</span>
-      <button class="error-dismiss" onclick={() => (error = "")}>Dismiss</button>
+      <button class="error-dismiss" onclick={() => (error = "")}>Dismiss</button
+      >
     </div>
   {/if}
   {#if showDiff}
@@ -296,6 +297,7 @@
       {blocks}
       {annotations}
       fileSnippets={activeSession?.fileSnippets}
+      {theme}
       onAddAnnotation={addAnnotation}
       onRemoveAnnotation={removeAnnotation}
       onUpdateAnnotation={updateAnnotation}

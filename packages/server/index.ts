@@ -50,7 +50,6 @@ function sessionToSummary(s: SessionState) {
   };
 }
 
-
 export function startServer(options: ServerOptions = {}): {
   port: number;
   stop: () => void;

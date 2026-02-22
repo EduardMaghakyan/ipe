@@ -115,20 +115,136 @@ Add a \`/api/health/db\` endpoint that reports pool statistics:
   const mockFileSnippets = [
     {
       path: "auth/jwt.ts",
-      content: `import { sign, verify, JwtPayload } from "jsonwebtoken";
+      content: `import { sign, verify, decode, type JwtPayload, type SignOptions, type VerifyOptions } from "jsonwebtoken";
+import { randomBytes, createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+// ─── Configuration ──────────────────────────────────────────────────────────────────────────────────────────
 
-export function createAccessToken(userId: string): string {
-  return sign({ sub: userId }, JWT_SECRET, { expiresIn: "15m" });
+interface JWTConfig {
+  secret: string;
+  issuer: string;
+  audience: string;
+  accessTokenTTL: number;   // seconds
+  refreshTokenTTL: number;  // seconds
+  algorithm: "HS256" | "HS384" | "HS512" | "RS256";
 }
 
-export function createRefreshToken(userId: string): string {
-  return sign({ sub: userId, type: "refresh" }, JWT_SECRET, { expiresIn: "7d" });
+const DEFAULT_CONFIG: JWTConfig = {
+  secret: process.env.JWT_SECRET || "dev-secret-do-not-use-in-production-this-is-a-very-long-secret-key-for-testing-purposes-only",
+  issuer: "ipe-auth-service",
+  audience: "ipe-client",
+  accessTokenTTL: 15 * 60,          // 15 minutes
+  refreshTokenTTL: 7 * 24 * 60 * 60, // 7 days
+  algorithm: "HS256",
+};
+
+let config: JWTConfig = { ...DEFAULT_CONFIG };
+
+export function configureJWT(overrides: Partial<JWTConfig>): void {
+  config = { ...config, ...overrides };
+  console.log(\`[JWT] Configuration updated: issuer=\${config.issuer}, algorithm=\${config.algorithm}, accessTTL=\${config.accessTokenTTL}s\`);
 }
 
-export function verifyToken(token: string): JwtPayload {
-  return verify(token, JWT_SECRET) as JwtPayload;
+// ─── Token Types ────────────────────────────────────────────────────────────────────────────────────────────
+
+export interface AccessTokenPayload extends JwtPayload {
+  sub: string;
+  email: string;
+  roles: string[];
+  permissions: string[];
+  sessionId: string;
+}
+
+export interface RefreshTokenPayload extends JwtPayload {
+  sub: string;
+  type: "refresh";
+  family: string;  // token family for rotation detection
+  generation: number;
+}
+
+// ─── Token Creation ─────────────────────────────────────────────────────────────────────────────────────────
+
+export function createAccessToken(userId: string, email: string, roles: string[] = ["user"], permissions: string[] = []): string {
+  const signOptions: SignOptions = {
+    expiresIn: config.accessTokenTTL,
+    issuer: config.issuer,
+    audience: config.audience,
+    algorithm: config.algorithm,
+    jwtid: randomBytes(16).toString("hex"),
+  };
+
+  const payload: Omit<AccessTokenPayload, "iat" | "exp" | "iss" | "aud"> = {
+    sub: userId,
+    email,
+    roles,
+    permissions: permissions.length > 0 ? permissions : derivePermissionsFromRoles(roles),
+    sessionId: randomBytes(8).toString("hex"),
+  };
+
+  return sign(payload, config.secret, signOptions);
+}
+
+export function createRefreshToken(userId: string, family?: string, generation: number = 0): string {
+  const tokenFamily = family || randomBytes(16).toString("hex");
+  const signOptions: SignOptions = {
+    expiresIn: config.refreshTokenTTL,
+    issuer: config.issuer,
+    audience: config.audience,
+    algorithm: config.algorithm,
+    jwtid: randomBytes(16).toString("hex"),
+  };
+
+  return sign({ sub: userId, type: "refresh", family: tokenFamily, generation } satisfies Omit<RefreshTokenPayload, "iat" | "exp" | "iss" | "aud">, config.secret, signOptions);
+}
+
+// ─── Token Verification ─────────────────────────────────────────────────────────────────────────────────────
+
+export function verifyAccessToken(token: string): AccessTokenPayload {
+  const options: VerifyOptions = { issuer: config.issuer, audience: config.audience, algorithms: [config.algorithm] };
+  const payload = verify(token, config.secret, options) as AccessTokenPayload;
+
+  if (!payload.sub || !payload.email) {
+    throw new Error("Invalid access token: missing required claims (sub, email)");
+  }
+  return payload;
+}
+
+export function verifyRefreshToken(token: string): RefreshTokenPayload {
+  const options: VerifyOptions = { issuer: config.issuer, audience: config.audience, algorithms: [config.algorithm] };
+  const payload = verify(token, config.secret, options) as RefreshTokenPayload;
+
+  if (payload.type !== "refresh") {
+    throw new Error("Invalid refresh token: wrong token type");
+  }
+  return payload;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────────────────────────────────────
+
+function derivePermissionsFromRoles(roles: string[]): string[] {
+  const rolePermissionMap: Record<string, string[]> = {
+    user: ["read:own", "write:own"],
+    editor: ["read:own", "write:own", "read:all", "write:all"],
+    admin: ["read:own", "write:own", "read:all", "write:all", "admin:users", "admin:settings", "admin:billing"],
+    superadmin: ["read:own", "write:own", "read:all", "write:all", "admin:users", "admin:settings", "admin:billing", "admin:system"],
+  };
+
+  const permissions = new Set<string>();
+  for (const role of roles) {
+    const perms = rolePermissionMap[role] ?? [];
+    for (const p of perms) permissions.add(p);
+  }
+  return [...permissions];
+}
+
+export function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export function decodeWithoutVerification(token: string): JwtPayload | null {
+  return decode(token, { json: true });
 }`,
     },
   ];

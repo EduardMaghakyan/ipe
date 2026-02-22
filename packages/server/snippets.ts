@@ -105,7 +105,11 @@ export async function resolveSnippets(
       const realCwd = await realpath(cwd);
       realFullPath = await realpath(fullPath);
       if (!realFullPath.startsWith(realCwd + "/")) {
-        snippets.push({ path: ref.path, content: "", error: "Path outside project directory" });
+        snippets.push({
+          path: ref.path,
+          content: "",
+          error: "Path outside project directory",
+        });
         continue;
       }
     } catch {
@@ -118,7 +122,10 @@ export async function resolveSnippets(
       const text = await Promise.race([
         readFile(realFullPath, "utf-8"),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error("timeout")), FILE_READ_TIMEOUT);
+          timer = setTimeout(
+            () => reject(new Error("timeout")),
+            FILE_READ_TIMEOUT,
+          );
         }),
       ]);
       clearTimeout(timer);
