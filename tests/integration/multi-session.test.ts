@@ -262,8 +262,10 @@ describe("multi-session hook flow", () => {
 
     await Promise.all([hookA.proc.exited, hookB.proc.exited]);
 
-    const outA = JSON.parse((await stderrA, await hookA.stdout()).trim());
-    const outB = JSON.parse((await stderrB, await hookB.stdout()).trim());
+    await stderrA;
+    const outA = JSON.parse((await hookA.stdout()).trim());
+    await stderrB;
+    const outB = JSON.parse((await hookB.stdout()).trim());
     expect(outA.hookSpecificOutput.decision.behavior).toBe("allow");
     expect(outB.hookSpecificOutput.decision.behavior).toBe("allow");
   }, 15000);

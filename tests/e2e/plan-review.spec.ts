@@ -151,7 +151,7 @@ test.describe("Plan Review", () => {
           req.url().includes("/approve") &&
           req.url().includes("/api/sessions/"),
       ),
-      page.locator(".btn-approve").click(),
+      page.locator(".btn-approve", { hasText: "Accept" }).click(),
     ]);
     expect(request.method()).toBe("POST");
     const postData = request.postDataJSON();

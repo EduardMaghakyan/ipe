@@ -1,11 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type {
-    Annotation,
-    Block,
-    PlanVersion,
-    SessionSummary,
-  } from "./types";
+  import type { Annotation, Block, PlanVersion, SessionSummary } from "./types";
   import { parseMarkdown } from "./utils/parser";
   import { formatFeedback } from "./utils/feedback";
   import Toolbar from "./lib/Toolbar.svelte";

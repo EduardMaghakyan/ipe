@@ -8,6 +8,7 @@ Review Claude Code plans in a browser UI with inline comments, like a GitHub PR 
 - **File snippet preview** — click any backtick-wrapped file reference (e.g. `` `src/index.ts` ``) to open a resizable side drawer with syntax-highlighted source code
 - **Plan version diff** — compare current plan against previous versions with side-by-side or inline views
 - **Multi-session support** — multiple concurrent Claude Code sessions share one server, switch between plans via tabs
+- **Line-range file references** — supports `src/foo.ts:10-20` syntax to show specific line ranges in the snippet drawer
 
 ## Install
 
@@ -98,7 +99,7 @@ On Windows, use the full path: `"command": "C:\\Users\\<you>\\.ipe\\ipe.exe"`
 2. A browser tab opens automatically showing the plan.
 3. **Add comments:** Select any text → click "Add Comment", or hover a block and click the "+" button in the left gutter.
 4. **General feedback:** Use the text area at the bottom of the plan for comments not tied to a specific block.
-5. **Approve:** Click the green "Approve" button. Claude proceeds with the plan.
+5. **Accept:** Click the green "Accept" button. Claude proceeds with the plan.
 6. **Request Changes:** Click the amber "Request Changes" button. Your inline comments and general feedback are sent back to Claude.
 7. The browser tab closes automatically after submitting.
 
@@ -107,6 +108,7 @@ On Windows, use the full path: `"command": "C:\\Users\\<you>\\.ipe\\ipe.exe"`
 | Variable      | Description                                                   | Default          |
 | ------------- | ------------------------------------------------------------- | ---------------- |
 | `IPE_BROWSER` | Command to open the browser (e.g. `firefox`, `google-chrome`) | Platform default |
+| `IPE_PORT`    | Base port for the HTTP server (tries up to 10 ports in range) | `19450`          |
 
 Platform defaults: `open` (macOS), `xdg-open` (Linux), `cmd /c start` (Windows).
 

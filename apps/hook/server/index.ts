@@ -226,6 +226,8 @@ async function main() {
   const permissionMode = input.permission_mode || "default";
   const sessionId = input.session_id || `anon-${Date.now()}`;
 
+  console.error(`IPE: session=${sessionId} permissionMode=${permissionMode}`);
+
   if (!plan) {
     console.error("No plan found in stdin input");
     process.exit(1);

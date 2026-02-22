@@ -234,22 +234,28 @@ export function startServer(options: ServerOptions = {}): {
           (route.action === "approve" || route.action === "deny") &&
           req.method === "POST"
         ) {
-          return req
-            .json()
-            .then((body: { feedback?: string }) => {
-              const behavior =
-                route.action === "approve" ? "allow" : "deny";
-              const ok = resolveSession(route.sessionId, {
-                behavior,
-                feedback: body.feedback || "",
-              });
-              if (!ok)
-                return Response.json({ error: "not found" }, { status: 404 });
-              return Response.json({ ok: true });
-            })
-            .catch(() =>
-              Response.json({ error: "invalid request body" }, { status: 400 }),
+          let body: { feedback?: string };
+          try {
+            body = await req.json();
+          } catch {
+            return Response.json(
+              { error: "invalid request body" },
+              { status: 400 },
             );
+          }
+          try {
+            const behavior = route.action === "approve" ? "allow" : "deny";
+            const ok = resolveSession(route.sessionId, {
+              behavior,
+              feedback: body.feedback || "",
+            });
+            if (!ok)
+              return Response.json({ error: "not found" }, { status: 404 });
+            return Response.json({ ok: true });
+          } catch (err) {
+            console.error("IPE: error resolving session:", err);
+            return Response.json({ error: "internal error" }, { status: 500 });
+          }
         }
 
         if (route.action === "events" && req.method === "GET") {

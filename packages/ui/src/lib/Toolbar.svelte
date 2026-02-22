@@ -123,8 +123,10 @@
     <button class="btn btn-deny" onclick={onDeny} disabled={submitting}
       >Request Changes</button
     >
-    <button class="btn btn-approve" onclick={onApprove} disabled={submitting}
-      >Approve</button
+    <button
+      class="btn btn-approve"
+      onclick={onApprove}
+      disabled={submitting}>Accept</button
     >
   </div>
 </header>
