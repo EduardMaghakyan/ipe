@@ -1,54 +1,270 @@
 import html from "../ui/dist/index.html" with { type: "text" };
 import type { PlanVersion } from "./history";
 
-interface ServerOptions {
+export interface SessionInput {
+  sessionId: string;
   plan: string;
   permissionMode: string;
   previousPlans?: PlanVersion[];
-  version?: string;
-  onApprove: (feedback: string) => void;
-  onDeny: (feedback: string) => void;
 }
 
-export function startServer(options: ServerOptions): {
+export interface SessionDecision {
+  behavior: "allow" | "deny";
+  feedback: string;
+}
+
+interface SessionState {
+  sessionId: string;
+  plan: string;
+  permissionMode: string;
+  previousPlans: PlanVersion[];
+  registeredAt: number;
+  resolve: (decision: SessionDecision) => void;
+  hookSSE: Set<ReadableStreamDefaultController>;
+}
+
+interface ServerOptions {
+  port?: number;
+  version?: string;
+}
+
+function extractTitle(plan: string): string {
+  const match = plan.match(/^#{1,2}\s+(.+)$/m);
+  return match ? match[1].trim() : "Untitled Plan";
+}
+
+function sessionToSummary(s: SessionState) {
+  return {
+    sessionId: s.sessionId,
+    title: extractTitle(s.plan),
+    plan: s.plan,
+    permissionMode: s.permissionMode,
+    previousPlans: s.previousPlans,
+    registeredAt: s.registeredAt,
+  };
+}
+
+export function startServer(options: ServerOptions = {}): {
   port: number;
   stop: () => void;
+  addSession: (input: SessionInput) => Promise<SessionDecision>;
+  waitForDrain: () => Promise<void>;
 } {
+  const sessions = new Map<string, SessionState>();
+  const uiSSE = new Set<ReadableStreamDefaultController>();
+
+  let drainResolve: (() => void) | null = null;
+  let drainPromise: Promise<void> | null = null;
+
+  function resetDrainPromise() {
+    if (!drainPromise) {
+      drainPromise = new Promise<void>((r) => {
+        drainResolve = r;
+      });
+    }
+  }
+
+  function getDrainPromise(): Promise<void> {
+    if (sessions.size === 0) return Promise.resolve();
+    resetDrainPromise();
+    return drainPromise!;
+  }
+
+  function broadcastUI(event: string, data: unknown) {
+    const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const ctrl of uiSSE) {
+      try {
+        ctrl.enqueue(new TextEncoder().encode(msg));
+      } catch {
+        uiSSE.delete(ctrl);
+      }
+    }
+  }
+
+  function resolveSession(
+    sessionId: string,
+    decision: SessionDecision,
+  ): boolean {
+    const session = sessions.get(sessionId);
+    if (!session) return false;
+
+    // Notify hook SSE listeners
+    const msg = `event: decision\ndata: ${JSON.stringify(decision)}\n\n`;
+    for (const ctrl of session.hookSSE) {
+      try {
+        ctrl.enqueue(new TextEncoder().encode(msg));
+        ctrl.close();
+      } catch {
+        // already closed
+      }
+    }
+
+    session.resolve(decision);
+    sessions.delete(sessionId);
+    broadcastUI("session-removed", { sessionId });
+
+    // Check if all sessions are done
+    if (sessions.size === 0) {
+      drainResolve?.();
+      drainResolve = null;
+      drainPromise = null;
+    }
+
+    return true;
+  }
+
+  function addSession(input: SessionInput): Promise<SessionDecision> {
+    resetDrainPromise();
+
+    return new Promise<SessionDecision>((resolve) => {
+      const state: SessionState = {
+        sessionId: input.sessionId,
+        plan: input.plan,
+        permissionMode: input.permissionMode,
+        previousPlans: input.previousPlans ?? [],
+        registeredAt: Date.now(),
+        resolve,
+        hookSSE: new Set(),
+      };
+      sessions.set(input.sessionId, state);
+      broadcastUI("session-added", sessionToSummary(state));
+    });
+  }
+
+  // Route matching helper for /api/sessions/:id/*
+  function matchSessionRoute(
+    pathname: string,
+  ): { sessionId: string; action: string } | null {
+    const m = pathname.match(/^\/api\/sessions\/([^/]+)\/(.+)$/);
+    if (m) return { sessionId: decodeURIComponent(m[1]), action: m[2] };
+    return null;
+  }
+
   const server = Bun.serve({
-    port: 0,
+    port: options.port ?? 0,
     fetch(req) {
       const url = new URL(req.url);
 
+      // Serve UI
       if (req.method === "GET" && url.pathname === "/") {
         return new Response(html, {
           headers: { "Content-Type": "text/html" },
         });
       }
 
-      if (req.method === "GET" && url.pathname === "/api/plan") {
+      // Health check
+      if (req.method === "GET" && url.pathname === "/api/health") {
         return Response.json({
-          plan: options.plan,
-          permissionMode: options.permissionMode,
+          ok: true,
+          sessions: sessions.size,
           version: options.version || "dev",
         });
       }
 
-      if (req.method === "GET" && url.pathname === "/api/history") {
-        return Response.json(options.previousPlans ?? []);
+      // List sessions
+      if (req.method === "GET" && url.pathname === "/api/sessions") {
+        const list = Array.from(sessions.values()).map(sessionToSummary);
+        return Response.json(list);
       }
 
-      const callbacks: Record<string, ((f: string) => void) | undefined> = {
-        "/api/approve": options.onApprove,
-        "/api/deny": options.onDeny,
-      };
-      const callback =
-        req.method === "POST" ? callbacks[url.pathname] : undefined;
-      if (callback) {
-        return req.json().then((body: { feedback?: string }) => {
-          callback(body.feedback || "");
-          setTimeout(() => server.stop(), 100);
+      // Register session
+      if (req.method === "POST" && url.pathname === "/api/sessions") {
+        return req.json().then((body: SessionInput) => {
+          addSession(body);
           return Response.json({ ok: true });
         });
+      }
+
+      // UI SSE
+      if (req.method === "GET" && url.pathname === "/api/events") {
+        const stream = new ReadableStream({
+          start(controller) {
+            uiSSE.add(controller);
+            // Send current sessions as initial data
+            const list = Array.from(sessions.values()).map(sessionToSummary);
+            const msg = `event: init\ndata: ${JSON.stringify(list)}\n\n`;
+            controller.enqueue(new TextEncoder().encode(msg));
+          },
+          cancel() {
+            // Controller will be cleaned up on next broadcast
+          },
+        });
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          },
+        });
+      }
+
+      // Session-specific routes
+      const route = matchSessionRoute(url.pathname);
+      if (route) {
+        const session = sessions.get(route.sessionId);
+
+        if (route.action === "plan" && req.method === "GET") {
+          if (!session)
+            return Response.json({ error: "not found" }, { status: 404 });
+          return Response.json({
+            plan: session.plan,
+            permissionMode: session.permissionMode,
+            version: options.version || "dev",
+          });
+        }
+
+        if (route.action === "history" && req.method === "GET") {
+          if (!session)
+            return Response.json({ error: "not found" }, { status: 404 });
+          return Response.json(session.previousPlans);
+        }
+
+        if (route.action === "approve" && req.method === "POST") {
+          return req.json().then((body: { feedback?: string }) => {
+            const ok = resolveSession(route.sessionId, {
+              behavior: "allow",
+              feedback: body.feedback || "",
+            });
+            if (!ok)
+              return Response.json({ error: "not found" }, { status: 404 });
+            return Response.json({ ok: true });
+          });
+        }
+
+        if (route.action === "deny" && req.method === "POST") {
+          return req.json().then((body: { feedback?: string }) => {
+            const ok = resolveSession(route.sessionId, {
+              behavior: "deny",
+              feedback: body.feedback || "",
+            });
+            if (!ok)
+              return Response.json({ error: "not found" }, { status: 404 });
+            return Response.json({ ok: true });
+          });
+        }
+
+        if (route.action === "events" && req.method === "GET") {
+          if (!session) {
+            return new Response("Session not found", { status: 404 });
+          }
+          let ctrl: ReadableStreamDefaultController;
+          const stream = new ReadableStream({
+            start(controller) {
+              ctrl = controller;
+              session.hookSSE.add(controller);
+            },
+            cancel() {
+              session.hookSSE.delete(ctrl);
+            },
+          });
+          return new Response(stream, {
+            headers: {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              Connection: "keep-alive",
+            },
+          });
+        }
       }
 
       return new Response("Not Found", { status: 404 });
@@ -58,5 +274,7 @@ export function startServer(options: ServerOptions): {
   return {
     port: server.port,
     stop: () => server.stop(),
+    addSession,
+    waitForDrain: getDrainPromise,
   };
 }

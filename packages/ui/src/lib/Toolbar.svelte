@@ -1,10 +1,15 @@
 <script lang="ts">
+  import type { SessionSummary } from "../types";
+
   interface Props {
     title: string;
     version?: string;
-    commentCount: number;
+    commentCounts: Record<string, number>;
     versionCount: number;
     theme: "dark" | "light";
+    sessions: SessionSummary[];
+    activeSessionId: string | null;
+    onSelect: (sessionId: string) => void;
     onToggleTheme: () => void;
     onCompare: () => void;
     onApprove: () => void;
@@ -14,26 +19,50 @@
   let {
     title,
     version = "",
-    commentCount,
+    commentCounts,
     versionCount,
     theme,
+    sessions,
+    activeSessionId,
+    onSelect,
     onToggleTheme,
     onCompare,
     onApprove,
     onDeny,
   }: Props = $props();
+
+  let multiSession = $derived(sessions.length > 1);
 </script>
 
 <header class="toolbar">
-  <div class="toolbar-left">
-    <span class="toolbar-title">{title}</span>
-    {#if version && version !== "dev"}
-      <span class="version">{version}</span>
-    {/if}
-    {#if commentCount > 0}
-      <span class="badge"
-        >{commentCount} comment{commentCount !== 1 ? "s" : ""}</span
-      >
+  <div class="toolbar-left" class:tabs-mode={multiSession}>
+    {#if multiSession}
+      {#each sessions as session (session.sessionId)}
+        <button
+          class="session-tab"
+          class:active={session.sessionId === activeSessionId}
+          onclick={() => onSelect(session.sessionId)}
+        >
+          {session.title}
+          {#if commentCounts[session.sessionId] > 0}
+            <span class="tab-badge">{commentCounts[session.sessionId]}</span>
+          {/if}
+        </button>
+      {/each}
+    {:else}
+      <span class="toolbar-title">{title}</span>
+      {#if version && version !== "dev"}
+        <span class="version">{version}</span>
+      {/if}
+      {#if activeSessionId && commentCounts[activeSessionId] > 0}
+        <span class="badge"
+          >{commentCounts[activeSessionId]} comment{commentCounts[
+            activeSessionId
+          ] !== 1
+            ? "s"
+            : ""}</span
+        >
+      {/if}
     {/if}
   </div>
   <div class="toolbar-right">
@@ -66,14 +95,28 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 24px;
+    padding: 0 24px;
     background: var(--color-bg-subtle);
     border-bottom: 1px solid var(--color-border);
+    min-height: 49px;
   }
   .toolbar-left {
     display: flex;
     align-items: center;
     gap: 12px;
+    min-width: 0;
+    padding: 12px 0;
+  }
+  .toolbar-left.tabs-mode {
+    flex: 1;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 0;
+    padding: 0;
+    margin-right: 16px;
+  }
+  .toolbar-left.tabs-mode::-webkit-scrollbar {
+    display: none;
   }
   .toolbar-title {
     font-weight: 600;
@@ -91,10 +134,46 @@
     padding: 2px 8px;
     border-radius: 10px;
     font-size: 0.75rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .tab-badge {
+    background: var(--color-border);
+    color: var(--color-text-muted);
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    margin-left: 6px;
+    line-height: 1.4;
+  }
+  .session-tab {
+    display: flex;
+    align-items: center;
+    padding: 14px 16px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+  }
+  .session-tab:hover {
+    color: var(--color-text-default);
+  }
+  .session-tab.active {
+    color: var(--color-text-emphasis);
+    border-bottom-color: var(--color-accent);
   }
   .toolbar-right {
     display: flex;
     gap: 8px;
+    flex-shrink: 0;
   }
   .btn {
     padding: 6px 16px;

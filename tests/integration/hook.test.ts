@@ -2,15 +2,23 @@ import { describe, test, expect } from "bun:test";
 
 const HOOK_ENTRY = "apps/hook/server/index.ts";
 
+let nextPort = 19600; // Unique range to avoid conflicts
+
 function spawnHook(stdinData: string): {
   proc: ReturnType<typeof Bun.spawn>;
   stdout: () => Promise<string>;
   stderr: () => Promise<string>;
 } {
+  const port = nextPort++;
   const proc = Bun.spawn(["bun", HOOK_ENTRY], {
     stdin: new Blob([stdinData]),
     stdout: "pipe",
     stderr: "pipe",
+    env: {
+      ...process.env,
+      IPE_BROWSER: "true",
+      IPE_PORT: String(port),
+    },
   });
   return {
     proc,
@@ -38,113 +46,121 @@ async function waitForServer(
   }
 }
 
-function makeInput(plan: string, permissionMode = "default") {
+function makeInput(
+  plan: string,
+  permissionMode = "default",
+  sessionId?: string,
+) {
   return JSON.stringify({
     tool_input: { plan },
     permission_mode: permissionMode,
+    session_id: sessionId,
   });
 }
 
 describe("hook stdin→stdout flow", () => {
   test("approve flow outputs allow decision", async () => {
-    const input = makeInput("# Test Plan\n\nDo the thing");
-    const proc = Bun.spawn(["bun", HOOK_ENTRY], {
-      stdin: new Blob([input]),
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, IPE_BROWSER: "true" },
-    });
+    const input = makeInput("# Test Plan\n\nDo the thing", "default", "s1");
+    const { proc, stdout } = spawnHook(input);
 
     const { port } = await waitForServer(proc.stderr as ReadableStream);
 
-    const res = await fetch(`http://localhost:${port}/api/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ feedback: "" }),
-    });
+    const res = await fetch(
+      `http://localhost:${port}/api/sessions/s1/approve`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedback: "" }),
+      },
+    );
     expect(res.status).toBe(200);
 
-    await proc.exited;
-    const stdout = await new Response(proc.stdout).text();
-    const output = JSON.parse(stdout.trim());
+    await Promise.race([
+      proc.exited,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 3000),
+      ),
+    ]);
+    const out = await stdout();
+    const output = JSON.parse(out.trim());
 
     expect(output.hookSpecificOutput.hookEventName).toBe("PermissionRequest");
     expect(output.hookSpecificOutput.decision.behavior).toBe("allow");
-  });
+  }, 10000);
 
   test("deny flow outputs deny decision with message", async () => {
-    const input = makeInput("# Test Plan\n\nDo the thing");
-    const proc = Bun.spawn(["bun", HOOK_ENTRY], {
-      stdin: new Blob([input]),
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, IPE_BROWSER: "true" },
-    });
+    const input = makeInput("# Test Plan\n\nDo the thing", "default", "s1");
+    const { proc, stdout } = spawnHook(input);
 
     const { port } = await waitForServer(proc.stderr as ReadableStream);
 
-    const res = await fetch(`http://localhost:${port}/api/deny`, {
+    const res = await fetch(`http://localhost:${port}/api/sessions/s1/deny`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feedback: "Please revise step 2" }),
     });
     expect(res.status).toBe(200);
 
-    await proc.exited;
-    const stdout = await new Response(proc.stdout).text();
-    const output = JSON.parse(stdout.trim());
+    await Promise.race([
+      proc.exited,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 3000),
+      ),
+    ]);
+    const out = await stdout();
+    const output = JSON.parse(out.trim());
 
     expect(output.hookSpecificOutput.hookEventName).toBe("PermissionRequest");
     expect(output.hookSpecificOutput.decision.behavior).toBe("deny");
     expect(output.hookSpecificOutput.decision.message).toBe(
       "Please revise step 2",
     );
-  });
+  }, 10000);
 
   test("deny with no feedback uses default message", async () => {
-    const input = makeInput("# Plan\n\nContent");
-    const proc = Bun.spawn(["bun", HOOK_ENTRY], {
-      stdin: new Blob([input]),
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, IPE_BROWSER: "true" },
-    });
+    const input = makeInput("# Plan\n\nContent", "default", "s1");
+    const { proc, stdout } = spawnHook(input);
 
     const { port } = await waitForServer(proc.stderr as ReadableStream);
 
-    await fetch(`http://localhost:${port}/api/deny`, {
+    await fetch(`http://localhost:${port}/api/sessions/s1/deny`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feedback: "" }),
     });
 
-    await proc.exited;
-    const stdout = await new Response(proc.stdout).text();
-    const output = JSON.parse(stdout.trim());
+    await Promise.race([
+      proc.exited,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 3000),
+      ),
+    ]);
+    const out = await stdout();
+    const output = JSON.parse(out.trim());
 
     expect(output.hookSpecificOutput.decision.message).toBe(
       "Plan changes requested",
     );
-  });
+  }, 10000);
 
   test("process exits after decision", async () => {
-    const input = makeInput("# Plan\n\nContent");
-    const proc = Bun.spawn(["bun", HOOK_ENTRY], {
-      stdin: new Blob([input]),
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, IPE_BROWSER: "true" },
-    });
+    const input = makeInput("# Plan\n\nContent", "default", "s1");
+    const { proc } = spawnHook(input);
 
     const { port } = await waitForServer(proc.stderr as ReadableStream);
 
-    await fetch(`http://localhost:${port}/api/approve`, {
+    await fetch(`http://localhost:${port}/api/sessions/s1/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feedback: "" }),
     });
 
-    const exitCode = await proc.exited;
+    const exitCode = await Promise.race([
+      proc.exited,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 3000),
+      ),
+    ]);
     expect(exitCode).toBe(0);
-  });
+  }, 10000);
 });
