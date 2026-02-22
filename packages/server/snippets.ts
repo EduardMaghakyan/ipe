@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 export interface FileSnippet {
@@ -10,16 +10,47 @@ export interface FileSnippet {
 }
 
 // Matches backtick-wrapped paths: `src/foo.ts`, `src/foo.ts:42`, `src/foo.ts:10-20`
-const FILE_REF_REGEX = /`([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+(?::(\d+)(?:-(\d+))?)?)`/g;
+const FILE_REF_REGEX =
+  /`([a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+(?::(\d+)(?:-(\d+))?)?)`/g;
 
 const KNOWN_EXTENSIONS = new Set([
-  "ts", "tsx", "js", "jsx", "mjs", "cjs",
-  "py", "rb", "go", "rs", "java", "kt", "swift",
-  "c", "cpp", "h", "hpp", "cs",
-  "html", "css", "scss", "less", "svelte", "vue",
-  "json", "yaml", "yml", "toml", "xml",
-  "md", "txt", "sh", "bash", "zsh",
-  "sql", "graphql", "proto",
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "mjs",
+  "cjs",
+  "py",
+  "rb",
+  "go",
+  "rs",
+  "java",
+  "kt",
+  "swift",
+  "c",
+  "cpp",
+  "h",
+  "hpp",
+  "cs",
+  "html",
+  "css",
+  "scss",
+  "less",
+  "svelte",
+  "vue",
+  "json",
+  "yaml",
+  "yml",
+  "toml",
+  "xml",
+  "md",
+  "txt",
+  "sh",
+  "bash",
+  "zsh",
+  "sql",
+  "graphql",
+  "proto",
 ]);
 
 export function extractFileRefs(markdown: string): Array<{
@@ -27,7 +58,8 @@ export function extractFileRefs(markdown: string): Array<{
   startLine?: number;
   endLine?: number;
 }> {
-  const refs: Array<{ path: string; startLine?: number; endLine?: number }> = [];
+  const refs: Array<{ path: string; startLine?: number; endLine?: number }> =
+    [];
   const seen = new Set<string>();
 
   // Skip content inside fenced code blocks
@@ -56,19 +88,25 @@ export function extractFileRefs(markdown: string): Array<{
 const CONTEXT_LINES = 5;
 const MAX_FILE_LINES = 200;
 
-export function resolveSnippets(markdown: string, cwd: string): FileSnippet[] {
+export async function resolveSnippets(
+  markdown: string,
+  cwd: string,
+): Promise<FileSnippet[]> {
   const refs = extractFileRefs(markdown);
   const snippets: FileSnippet[] = [];
 
   for (const ref of refs) {
     const fullPath = resolve(cwd, ref.path);
     try {
-      const text = readFileSync(fullPath, "utf-8");
+      const text = await readFile(fullPath, "utf-8");
       const lines = text.split("\n");
 
       if (ref.startLine) {
         const start = Math.max(1, ref.startLine - CONTEXT_LINES);
-        const end = Math.min(lines.length, (ref.endLine ?? ref.startLine) + CONTEXT_LINES);
+        const end = Math.min(
+          lines.length,
+          (ref.endLine ?? ref.startLine) + CONTEXT_LINES,
+        );
         snippets.push({
           path: ref.path,
           startLine: start,

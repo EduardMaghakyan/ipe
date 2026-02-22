@@ -1,4 +1,7 @@
-import { startServer, type SessionDecision } from "../../../packages/server/index.ts";
+import {
+  startServer,
+  type SessionDecision,
+} from "../../../packages/server/index.ts";
 import { openBrowser } from "../../../packages/server/browser.ts";
 import { loadHistory, saveVersion } from "../../../packages/server/history.ts";
 import { checkForUpdate } from "../../../packages/server/update.ts";
@@ -59,8 +62,15 @@ function tryStartServer(
     return startServer({ port, version, latestVersion });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    const code = err && typeof err === "object" && "code" in err ? (err as { code: string }).code : "";
-    if (code === "EADDRINUSE" || message.includes("EADDRINUSE") || message.includes("address already in use")) {
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? (err as { code: string }).code
+        : "";
+    if (
+      code === "EADDRINUSE" ||
+      message.includes("EADDRINUSE") ||
+      message.includes("address already in use")
+    ) {
       return null;
     }
     throw err;
@@ -83,7 +93,10 @@ async function isIPEServer(port: number): Promise<boolean> {
   }
 }
 
-async function findOrStartServer(version: string, latestVersion?: string): Promise<{
+async function findOrStartServer(
+  version: string,
+  latestVersion?: string,
+): Promise<{
   server: ReturnType<typeof startServer> | null;
   port: number;
 }> {
@@ -163,7 +176,13 @@ async function clientPath(
   const res = await fetch(`http://localhost:${port}/api/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId, plan, permissionMode, previousPlans, fileSnippets }),
+    body: JSON.stringify({
+      sessionId,
+      plan,
+      permissionMode,
+      previousPlans,
+      fileSnippets,
+    }),
   });
 
   if (!res.ok) {
@@ -217,7 +236,7 @@ async function main() {
 
   // Resolve file snippets referenced in the plan
   const cwd = input.cwd || process.cwd();
-  const fileSnippets = resolveSnippets(plan, cwd);
+  const fileSnippets = await resolveSnippets(plan, cwd);
 
   const latestVersion = await checkForUpdate(VERSION);
   if (latestVersion) {
@@ -226,7 +245,10 @@ async function main() {
     );
   }
 
-  const { server, port } = await findOrStartServer(VERSION, latestVersion || undefined);
+  const { server, port } = await findOrStartServer(
+    VERSION,
+    latestVersion || undefined,
+  );
 
   if (server) {
     // We're the server owner
@@ -252,7 +274,14 @@ async function main() {
     setTimeout(() => process.exit(0), 50);
   } else {
     // Server already running — join as client
-    await clientPath(port, sessionId, plan, permissionMode, previousPlans, fileSnippets);
+    await clientPath(
+      port,
+      sessionId,
+      plan,
+      permissionMode,
+      previousPlans,
+      fileSnippets,
+    );
   }
 }
 

@@ -8,7 +8,13 @@ afterEach(() => {
   stopFn = null;
 });
 
-function createServer(opts: { version?: string; latestVersion?: string; upgradeCommand?: string[] } = {}) {
+function createServer(
+  opts: {
+    version?: string;
+    latestVersion?: string;
+    upgradeCommand?: string[];
+  } = {},
+) {
   const server = startServer({ version: opts.version ?? "test", ...opts });
   stopFn = server.stop;
   return server;
@@ -191,7 +197,9 @@ describe("multi-session server", () => {
 
   test("fileSnippets are included in session summary", async () => {
     const { port, addSession } = createServer();
-    const snippets = [{ path: "src/index.ts", content: "console.log('hello')" }];
+    const snippets = [
+      { path: "src/index.ts", content: "console.log('hello')" },
+    ];
 
     addSession({
       sessionId: "s1",

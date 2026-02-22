@@ -50,6 +50,18 @@ function sessionToSummary(s: SessionState) {
   };
 }
 
+// Lighter summary for SSE broadcasts — omits fileSnippets (fetched on initial load)
+function sessionToSSESummary(s: SessionState) {
+  return {
+    sessionId: s.sessionId,
+    title: extractTitle(s.plan),
+    plan: s.plan,
+    permissionMode: s.permissionMode,
+    previousPlans: s.previousPlans,
+    registeredAt: s.registeredAt,
+  };
+}
+
 export function startServer(options: ServerOptions = {}): {
   port: number;
   stop: () => void;
@@ -65,7 +77,9 @@ export function startServer(options: ServerOptions = {}): {
     if (sessions.size === 0) return Promise.resolve();
     if (!drain) {
       let resolve!: () => void;
-      const promise = new Promise<void>((r) => { resolve = r; });
+      const promise = new Promise<void>((r) => {
+        resolve = r;
+      });
       drain = { promise, resolve };
     }
     return drain.promise;
@@ -126,7 +140,7 @@ export function startServer(options: ServerOptions = {}): {
         hookSSE: new Set(),
       };
       sessions.set(input.sessionId, state);
-      broadcastUI("session-added", sessionToSummary(state));
+      broadcastUI("session-added", sessionToSSESummary(state));
     });
   }
 
@@ -169,10 +183,15 @@ export function startServer(options: ServerOptions = {}): {
 
       // Register session
       if (req.method === "POST" && url.pathname === "/api/sessions") {
-        return req.json().then((body: SessionInput) => {
-          addSession(body);
-          return Response.json({ ok: true });
-        }).catch(() => Response.json({ error: "invalid request body" }, { status: 400 }));
+        return req
+          .json()
+          .then((body: SessionInput) => {
+            addSession(body);
+            return Response.json({ ok: true });
+          })
+          .catch(() =>
+            Response.json({ error: "invalid request body" }, { status: 400 }),
+          );
       }
 
       // UI SSE
@@ -182,8 +201,8 @@ export function startServer(options: ServerOptions = {}): {
           start(controller) {
             ctrl = controller;
             uiSSE.add(controller);
-            // Send current sessions as initial data
-            const list = Array.from(sessions.values()).map(sessionToSummary);
+            // Send current sessions as initial data (lightweight, without fileSnippets)
+            const list = Array.from(sessions.values()).map(sessionToSSESummary);
             const msg = `event: init\ndata: ${JSON.stringify(list)}\n\n`;
             controller.enqueue(new TextEncoder().encode(msg));
           },
@@ -222,27 +241,37 @@ export function startServer(options: ServerOptions = {}): {
         }
 
         if (route.action === "approve" && req.method === "POST") {
-          return req.json().then((body: { feedback?: string }) => {
-            const ok = resolveSession(route.sessionId, {
-              behavior: "allow",
-              feedback: body.feedback || "",
-            });
-            if (!ok)
-              return Response.json({ error: "not found" }, { status: 404 });
-            return Response.json({ ok: true });
-          }).catch(() => Response.json({ error: "invalid request body" }, { status: 400 }));
+          return req
+            .json()
+            .then((body: { feedback?: string }) => {
+              const ok = resolveSession(route.sessionId, {
+                behavior: "allow",
+                feedback: body.feedback || "",
+              });
+              if (!ok)
+                return Response.json({ error: "not found" }, { status: 404 });
+              return Response.json({ ok: true });
+            })
+            .catch(() =>
+              Response.json({ error: "invalid request body" }, { status: 400 }),
+            );
         }
 
         if (route.action === "deny" && req.method === "POST") {
-          return req.json().then((body: { feedback?: string }) => {
-            const ok = resolveSession(route.sessionId, {
-              behavior: "deny",
-              feedback: body.feedback || "",
-            });
-            if (!ok)
-              return Response.json({ error: "not found" }, { status: 404 });
-            return Response.json({ ok: true });
-          }).catch(() => Response.json({ error: "invalid request body" }, { status: 400 }));
+          return req
+            .json()
+            .then((body: { feedback?: string }) => {
+              const ok = resolveSession(route.sessionId, {
+                behavior: "deny",
+                feedback: body.feedback || "",
+              });
+              if (!ok)
+                return Response.json({ error: "not found" }, { status: 404 });
+              return Response.json({ ok: true });
+            })
+            .catch(() =>
+              Response.json({ error: "invalid request body" }, { status: 400 }),
+            );
         }
 
         if (route.action === "events" && req.method === "GET") {

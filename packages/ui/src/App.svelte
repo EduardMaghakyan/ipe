@@ -1,6 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { Annotation, Block, PlanVersion, SessionSummary, FileSnippet } from "./types";
+  import type {
+    Annotation,
+    Block,
+    PlanVersion,
+    SessionSummary,
+    FileSnippet,
+  } from "./types";
   import { parseMarkdown } from "./utils/parser";
   import { formatFeedback } from "./utils/feedback";
   import Toolbar from "./lib/Toolbar.svelte";
@@ -49,13 +55,22 @@
   }
 
   function saveDraft(sessionId: string, ann: Annotation[], comment: string) {
-    localStorage.setItem(`ipe-draft-${sessionId}`, JSON.stringify({ annotations: ann, generalComment: comment }));
+    localStorage.setItem(
+      `ipe-draft-${sessionId}`,
+      JSON.stringify({ annotations: ann, generalComment: comment }),
+    );
   }
 
-  function loadDraft(sessionId: string): { annotations: Annotation[]; generalComment: string } | null {
+  function loadDraft(
+    sessionId: string,
+  ): { annotations: Annotation[]; generalComment: string } | null {
     const raw = localStorage.getItem(`ipe-draft-${sessionId}`);
     if (!raw) return null;
-    try { return JSON.parse(raw); } catch { return null; }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
   }
 
   function clearDraft(sessionId: string) {
@@ -110,6 +125,7 @@
     sessions = sessions.filter((s) => s.sessionId !== sessionId);
     sessionUIStates.delete(sessionId);
     clearDraft(sessionId);
+    submitting = false;
     if (activeSessionId === sessionId) {
       if (sessions.length > 0) {
         activeSessionId = sessions[0].sessionId;
@@ -204,20 +220,31 @@
   }
 
   async function submitDecision(action: "approve" | "deny") {
-    if (!activeSessionId) return;
+    if (!activeSessionId || submitting) return;
     submitting = true;
     const nonEmpty = annotations.filter((a) => a.comment.trim());
     const feedback = formatFeedback(nonEmpty, generalComment);
-    await fetch(
-      `/api/sessions/${encodeURIComponent(activeSessionId)}/${action}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ feedback }),
-      },
-    );
-    clearDraft(activeSessionId);
-    submitting = false;
+    try {
+      const res = await fetch(
+        `/api/sessions/${encodeURIComponent(activeSessionId)}/${action}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ feedback }),
+        },
+      );
+      if (!res.ok) {
+        error = `Failed to submit: ${res.status}`;
+        submitting = false;
+        return;
+      }
+      clearDraft(activeSessionId);
+      // Don't set submitting = false here — wait for SSE session-removed event
+      // to avoid the plan briefly reappearing between POST response and SSE event
+    } catch {
+      error = "Network error. Please try again.";
+      submitting = false;
+    }
   }
 </script>
 
@@ -244,6 +271,7 @@
     {commentCounts}
     versionCount={versions.length + 1}
     {theme}
+    {submitting}
     {sessions}
     {activeSessionId}
     onSelect={switchSession}

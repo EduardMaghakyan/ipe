@@ -29,18 +29,26 @@
     <span class="snippet-path">{snippet.path}</span>
     {#if snippet.startLine}
       <span class="snippet-lines">
-        :{snippet.startLine}{snippet.endLine && snippet.endLine !== snippet.startLine ? `-${snippet.endLine}` : ""}
+        :{snippet.startLine}{snippet.endLine &&
+        snippet.endLine !== snippet.startLine
+          ? `-${snippet.endLine}`
+          : ""}
       </span>
     {/if}
     {#if snippet.error}
       <span class="snippet-badge">{snippet.error}</span>
     {/if}
-    <button class="snippet-close" onclick={onClose} aria-label="Close snippet">&times;</button>
+    <button class="snippet-close" onclick={onClose} aria-label="Close snippet"
+      >&times;</button
+    >
   </div>
   {#if snippet.content}
     <div class="snippet-code">
-      <pre><code>{#each lines as line, i}<span class="line-num">{startNum + i}</span><span class="line-content">{@html renderLine(line)}</span>
-{/each}</code></pre>
+      <pre><code
+          >{#each lines as line, i}<span class="line-num">{startNum + i}</span
+            ><span class="line-content">{@html renderLine(line)}</span>
+          {/each}</code
+        ></pre>
     </div>
   {:else}
     <div class="snippet-empty">{snippet.error || "No content"}</div>
@@ -114,7 +122,8 @@
     border-radius: 0;
   }
   .snippet-code code {
-    font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+    font-family:
+      "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
     font-size: 0.8rem;
     line-height: 1.5;
   }

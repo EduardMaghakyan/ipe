@@ -13,6 +13,7 @@
     onSelect: (sessionId: string) => void;
     onToggleTheme: () => void;
     onCompare: () => void;
+    submitting: boolean;
     onApprove: () => void;
     onDeny: () => void;
   }
@@ -29,6 +30,7 @@
     onSelect,
     onToggleTheme,
     onCompare,
+    submitting,
     onApprove,
     onDeny,
   }: Props = $props();
@@ -118,8 +120,12 @@
     {#if versionCount > 1}
       <button class="btn btn-secondary" onclick={onCompare}>Compare</button>
     {/if}
-    <button class="btn btn-deny" onclick={onDeny}>Request Changes</button>
-    <button class="btn btn-approve" onclick={onApprove}>Approve</button>
+    <button class="btn btn-deny" onclick={onDeny} disabled={submitting}
+      >Request Changes</button
+    >
+    <button class="btn btn-approve" onclick={onApprove} disabled={submitting}
+      >Approve</button
+    >
   </div>
 </header>
 
@@ -250,15 +256,20 @@
     color: #fff;
     border-color: var(--color-approve-border);
   }
-  .btn-approve:hover {
+  .btn-approve:hover:not(:disabled) {
     background: var(--color-approve-hover);
+  }
+  .btn-approve:disabled,
+  .btn-deny:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   .btn-deny {
     background: transparent;
     color: var(--color-deny-text);
     border-color: var(--color-deny-text);
   }
-  .btn-deny:hover {
+  .btn-deny:hover:not(:disabled) {
     background: var(--color-deny-hover-bg);
   }
   .btn-secondary {

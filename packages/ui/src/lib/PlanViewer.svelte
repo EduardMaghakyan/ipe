@@ -30,7 +30,11 @@
     text: string;
   } | null>(null);
   let editingId = $state<string | null>(null);
-  let activeSnippet = $state<{ snippet: FileSnippet; x: number; y: number } | null>(null);
+  let activeSnippet = $state<{
+    snippet: FileSnippet;
+    x: number;
+    y: number;
+  } | null>(null);
 
   // Build a lookup map from file paths to snippets
   let snippetMap = $derived.by(() => {
@@ -51,10 +55,11 @@
     if (!snippet) return;
 
     const rect = ref.getBoundingClientRect();
+    const maxY = window.innerHeight - 420; // 400px panel + 20px margin
     activeSnippet = {
       snippet,
       x: Math.max(8, Math.min(rect.left, window.innerWidth - 720)),
-      y: rect.bottom + 8,
+      y: Math.min(rect.bottom + 8, maxY),
     };
     e.stopPropagation();
   }
@@ -123,7 +128,10 @@
     ) {
       popup = null;
     }
-    if (!target.closest(".file-snippet-panel") && !target.closest("[data-file-path]")) {
+    if (
+      !target.closest(".file-snippet-panel") &&
+      !target.closest("[data-file-path]")
+    ) {
       activeSnippet = null;
     }
   }
