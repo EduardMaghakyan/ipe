@@ -26,6 +26,8 @@ interface SessionState {
 interface ServerOptions {
   port?: number;
   version?: string;
+  latestVersion?: string;
+  upgradeCommand?: string[];
 }
 
 function extractTitle(plan: string): string {
@@ -134,7 +136,7 @@ export function startServer(options: ServerOptions = {}): {
 
   const server = Bun.serve({
     port: options.port ?? 0,
-    fetch(req) {
+    async fetch(req) {
       const url = new URL(req.url);
 
       // Serve UI
@@ -150,6 +152,7 @@ export function startServer(options: ServerOptions = {}): {
           ok: true,
           sessions: sessions.size,
           version: options.version || "dev",
+          latestVersion: options.latestVersion,
         });
       }
 
@@ -258,6 +261,29 @@ export function startServer(options: ServerOptions = {}): {
               Connection: "keep-alive",
             },
           });
+        }
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/upgrade") {
+        try {
+          const cmd = options.upgradeCommand ?? [
+            "bash",
+            "-c",
+            "curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash",
+          ];
+          const proc = Bun.spawn(cmd, {
+            stdout: "pipe",
+            stderr: "pipe",
+          });
+          await proc.exited;
+          if (proc.exitCode === 0) {
+            return Response.json({ ok: true });
+          }
+          const stderr = await new Response(proc.stderr).text();
+          return Response.json({ ok: false, error: stderr }, { status: 500 });
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          return Response.json({ ok: false, error: message }, { status: 500 });
         }
       }
 

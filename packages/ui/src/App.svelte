@@ -23,6 +23,8 @@
   let annotations = $state<Annotation[]>([]);
   let generalComment = $state("");
 
+  let version = $state("");
+  let latestVersion = $state("");
   let showDiff = $state(false);
   let loading = $state(true);
   let error = $state("");
@@ -101,6 +103,15 @@
 
   onMount(() => {
     let es: EventSource | undefined;
+
+    // Fetch version info from health endpoint
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((data: { version?: string; latestVersion?: string }) => {
+        version = data.version || "";
+        latestVersion = data.latestVersion || "";
+      })
+      .catch(() => {});
 
     fetch("/api/sessions")
       .then((r) => r.json())
@@ -204,6 +215,8 @@
   {/if}
   <Toolbar
     {title}
+    {version}
+    {latestVersion}
     {commentCounts}
     versionCount={versions.length + 1}
     {theme}

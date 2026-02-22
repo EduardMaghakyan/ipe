@@ -3,6 +3,8 @@
 
   interface Props {
     title: string;
+    version?: string;
+    latestVersion?: string;
     commentCounts: Record<string, number>;
     versionCount: number;
     theme: "dark" | "light";
@@ -17,6 +19,8 @@
 
   let {
     title,
+    version = "",
+    latestVersion = "",
     commentCounts,
     versionCount,
     theme,
@@ -30,6 +34,23 @@
   }: Props = $props();
 
   let multiSession = $derived(sessions.length > 1);
+
+  let upgrading = $state(false);
+  let upgradeResult = $state<"success" | "error" | "">("");
+
+  async function handleUpgrade() {
+    upgrading = true;
+    upgradeResult = "";
+    try {
+      const res = await fetch("/api/upgrade", { method: "POST" });
+      const data = await res.json();
+      upgradeResult = data.ok ? "success" : "error";
+    } catch {
+      upgradeResult = "error";
+    } finally {
+      upgrading = false;
+    }
+  }
 </script>
 
 <header class="toolbar">
@@ -49,6 +70,9 @@
       {/each}
     {:else}
       <span class="toolbar-title">{title}</span>
+      {#if version && version !== "dev"}
+        <span class="version">{version}</span>
+      {/if}
       {#if activeSessionId && commentCounts[activeSessionId] > 0}
         <span class="badge"
           >{commentCounts[activeSessionId]} comment{commentCounts[
@@ -57,6 +81,25 @@
             ? "s"
             : ""}</span
         >
+      {/if}
+    {/if}
+    {#if latestVersion && latestVersion !== version}
+      {#if upgradeResult === "success"}
+        <span class="upgrade-success"
+          >Updated! Restart IPE to use {latestVersion}</span
+        >
+      {:else}
+        <button
+          class="btn-upgrade"
+          onclick={handleUpgrade}
+          disabled={upgrading}
+        >
+          {#if upgrading}
+            Upgrading...
+          {:else}
+            Upgrade to {latestVersion}
+          {/if}
+        </button>
       {/if}
     {/if}
   </div>
@@ -117,6 +160,34 @@
     font-weight: 600;
     font-size: 1rem;
     color: var(--color-text-emphasis);
+  }
+  .version {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-weight: 400;
+  }
+  .btn-upgrade {
+    background: var(--color-accent);
+    color: #fff;
+    border: none;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-upgrade:hover {
+    background: var(--color-accent-hover);
+  }
+  .btn-upgrade:disabled {
+    opacity: 0.7;
+    cursor: wait;
+  }
+  .upgrade-success {
+    font-size: 0.75rem;
+    color: var(--color-approve-bg);
+    font-weight: 500;
   }
   .badge {
     background: var(--color-border);

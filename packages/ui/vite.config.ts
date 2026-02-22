@@ -181,8 +181,16 @@ Add a \`/api/health/db\` endpoint that reports pool statistics:
               ok: true,
               sessions: mockSessions().length,
               version: "dev",
+              latestVersion: "v0.2.0",
             }),
           );
+          return;
+        }
+
+        // Upgrade endpoint
+        if (req.url === "/api/upgrade" && req.method === "POST") {
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify({ ok: true }));
           return;
         }
 

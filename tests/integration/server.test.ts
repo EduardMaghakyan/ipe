@@ -8,8 +8,8 @@ afterEach(() => {
   stopFn = null;
 });
 
-function createServer() {
-  const server = startServer({ version: "test" });
+function createServer(opts: { version?: string; latestVersion?: string; upgradeCommand?: string[] } = {}) {
+  const server = startServer({ version: opts.version ?? "test", ...opts });
   stopFn = server.stop;
   return server;
 }
@@ -187,5 +187,43 @@ describe("multi-session server", () => {
     const { port } = createServer();
     const res = await fetch(`http://localhost:${port}/unknown`);
     expect(res.status).toBe(404);
+  });
+
+  test("GET /api/health returns latestVersion when provided", async () => {
+    const { port } = createServer({
+      version: "v0.1.2",
+      latestVersion: "v0.2.0",
+    });
+    const res = await fetch(`http://localhost:${port}/api/health`);
+    const data = await res.json();
+    expect(data.version).toBe("v0.1.2");
+    expect(data.latestVersion).toBe("v0.2.0");
+  });
+
+  test("GET /api/health omits latestVersion when not provided", async () => {
+    const { port } = createServer();
+    const res = await fetch(`http://localhost:${port}/api/health`);
+    const data = await res.json();
+    expect(data.latestVersion).toBeUndefined();
+  });
+
+  test("POST /api/upgrade returns success on exit code 0", async () => {
+    const { port } = createServer({ upgradeCommand: ["true"] });
+    const res = await fetch(`http://localhost:${port}/api/upgrade`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+  });
+
+  test("POST /api/upgrade returns error on non-zero exit", async () => {
+    const { port } = createServer({ upgradeCommand: ["false"] });
+    const res = await fetch(`http://localhost:${port}/api/upgrade`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.ok).toBe(false);
   });
 });

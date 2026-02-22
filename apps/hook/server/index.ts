@@ -51,9 +51,10 @@ function getBasePort(): number {
 function tryStartServer(
   port: number,
   version: string,
+  latestVersion?: string,
 ): ReturnType<typeof startServer> | null {
   try {
-    return startServer({ port, version });
+    return startServer({ port, version, latestVersion });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     const code = err && typeof err === "object" && "code" in err ? (err as { code: string }).code : "";
@@ -80,7 +81,7 @@ async function isIPEServer(port: number): Promise<boolean> {
   }
 }
 
-async function findOrStartServer(version: string): Promise<{
+async function findOrStartServer(version: string, latestVersion?: string): Promise<{
   server: ReturnType<typeof startServer> | null;
   port: number;
 }> {
@@ -88,7 +89,7 @@ async function findOrStartServer(version: string): Promise<{
 
   for (let i = 0; i < PORT_RANGE; i++) {
     const port = basePort + i;
-    const server = tryStartServer(port, version);
+    const server = tryStartServer(port, version, latestVersion);
     if (server) {
       return { server, port };
     }
@@ -211,15 +212,14 @@ async function main() {
     previousPlans = loadHistory(sessionId).filter((v) => v.plan !== plan);
   }
 
-  checkForUpdate(VERSION).then((latest) => {
-    if (latest) {
-      console.error(
-        `\nIPE ${latest} is available (current: ${VERSION}). Upgrade: curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash\n`,
-      );
-    }
-  });
+  const latestVersion = await checkForUpdate(VERSION);
+  if (latestVersion) {
+    console.error(
+      `\nIPE ${latestVersion} is available (current: ${VERSION}). Upgrade: curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash\n`,
+    );
+  }
 
-  const { server, port } = await findOrStartServer(VERSION);
+  const { server, port } = await findOrStartServer(VERSION, latestVersion || undefined);
 
   if (server) {
     // We're the server owner
