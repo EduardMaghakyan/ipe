@@ -50,7 +50,7 @@
     const path = ref.dataset.filePath;
     if (!path) return;
     const snippet = snippetMap.get(path);
-    if (!snippet) return;
+    if (!snippet || !snippet.content) return;
 
     activeSnippet = snippet;
     e.stopPropagation();
