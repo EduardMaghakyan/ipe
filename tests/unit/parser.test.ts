@@ -48,6 +48,22 @@ describe("parseMarkdown", () => {
     expect(blocks[2].content).toBe("3. third");
   });
 
+  test("ordered list items have correct listStart", () => {
+    const blocks = parseMarkdown("1. first\n2. second\n3. third");
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0].listStart).toBe(1);
+    expect(blocks[1].listStart).toBe(2);
+    expect(blocks[2].listStart).toBe(3);
+  });
+
+  test("unordered list items have listStart", () => {
+    const blocks = parseMarkdown("- a\n- b\n- c");
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0].listStart).toBe(1);
+    expect(blocks[1].listStart).toBe(2);
+    expect(blocks[2].listStart).toBe(3);
+  });
+
   test("parses tables", () => {
     const md = "| Col1 | Col2 |\n| ---- | ---- |\n| a    | b    |";
     const blocks = parseMarkdown(md);

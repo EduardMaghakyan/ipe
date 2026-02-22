@@ -67,9 +67,10 @@ export function parseMarkdown(markdown: string): Block[] {
       continue;
     }
 
-    // List (unordered or ordered) — one block per item
+    // List (unordered or ordered) — one block per item, with position tracking
     if (/^(\s*[-*+]|\s*\d+\.)\s/.test(line)) {
       let itemLines = [line];
+      let listPosition = 1;
       i++;
       while (i < lines.length) {
         if (/^(\s*[-*+]|\s*\d+\.)\s/.test(lines[i])) {
@@ -80,7 +81,9 @@ export function parseMarkdown(markdown: string): Block[] {
             type: "list",
             content: raw,
             raw,
+            listStart: listPosition,
           });
+          listPosition++;
           itemLines = [lines[i]];
           i++;
         } else if (lines[i].startsWith("  ") && lines[i].trim() !== "") {
@@ -98,6 +101,7 @@ export function parseMarkdown(markdown: string): Block[] {
         type: "list",
         content: raw,
         raw,
+        listStart: listPosition,
       });
       continue;
     }

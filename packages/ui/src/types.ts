@@ -10,6 +10,7 @@ export interface Block {
   type: "heading" | "paragraph" | "code" | "list" | "table" | "blockquote";
   content: string;
   raw: string;
+  listStart?: number;
 }
 
 export interface SessionSummary {

@@ -158,6 +158,24 @@ test.describe("Plan Review", () => {
     expect(postData).toHaveProperty("feedback");
   });
 
+  test("ordered list items render with sequential numbering", async ({
+    page,
+  }) => {
+    // Find all ordered list blocks (they render as <ol> elements)
+    const olElements = page.locator(".block.list ol");
+    const count = await olElements.count();
+    expect(count).toBeGreaterThan(1);
+
+    // Check that start attributes increment sequentially
+    // The mock plan has a 4-item ordered list (items 1-4)
+    // Find the first ol with start="2" to confirm numbering works
+    const secondItem = page.locator('.block.list ol[start="2"]');
+    await expect(secondItem).toBeVisible();
+
+    const thirdItem = page.locator('.block.list ol[start="3"]');
+    await expect(thirdItem).toBeVisible();
+  });
+
   test("diff code block renders with colored lines", async ({ page }) => {
     const diffBlock = page.locator(".diff-block");
     await expect(diffBlock.first()).toBeVisible();

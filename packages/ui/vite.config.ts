@@ -266,7 +266,19 @@ export function decodeWithoutVerification(token: string): JwtPayload | null {
                 "## Step 5: Frontend changes",
                 "## Step 5: Client updates",
               )
-              .replace("## Testing", "## Verification"),
+              .replace("## Testing", "## Verification")
+              .replace(
+                '> **Important:** All existing endpoints must continue to work during the migration period. We\'ll support both session and JWT auth temporarily.\n\n',
+                "",
+              )
+              .replace('expiresIn: "15m"', 'expiresIn: "30m"'),
+            timestamp: Date.now() - 600000,
+          },
+          {
+            version: 2,
+            plan: p
+              .replace("## Testing", "## Verification")
+              .replace('expiresIn: "15m"', 'expiresIn: "15m"'),
             timestamp: Date.now() - 300000,
           },
         ],
@@ -320,8 +332,7 @@ export function decodeWithoutVerification(token: string): JwtPayload | null {
             JSON.stringify({
               ok: true,
               sessions: mockSessions().length,
-              version: "dev",
-              latestVersion: "v0.2.0",
+              version: "v0.2.0",
             }),
           );
           return;

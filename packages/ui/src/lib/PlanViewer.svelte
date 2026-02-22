@@ -196,7 +196,8 @@
       return `<li>${renderInlineMarkdown(text)}</li>`;
     });
     const tag = isOrdered ? "ol" : "ul";
-    return `<${tag}>${items.join("")}</${tag}>`;
+    const startAttr = isOrdered && block.listStart ? ` start="${block.listStart}"` : "";
+    return `<${tag}${startAttr}>${items.join("")}</${tag}>`;
   }
 
   function renderBlockquote(block: Block): string {
