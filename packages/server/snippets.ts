@@ -95,6 +95,7 @@ export async function resolveSnippets(
 ): Promise<FileSnippet[]> {
   const refs = extractFileRefs(markdown);
   const snippets: FileSnippet[] = [];
+  const realCwd = await realpath(cwd);
 
   for (const ref of refs) {
     const fullPath = resolve(cwd, ref.path);
@@ -102,7 +103,6 @@ export async function resolveSnippets(
     // Resolve symlinks and verify path stays within project directory
     let realFullPath: string;
     try {
-      const realCwd = await realpath(cwd);
       realFullPath = await realpath(fullPath);
       if (!realFullPath.startsWith(realCwd + "/")) {
         snippets.push({

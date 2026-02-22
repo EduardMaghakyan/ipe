@@ -227,7 +227,6 @@
   .toggle-btn.active {
     background: transparent;
     color: var(--color-deny-text);
-    border-color: var(--color-deny-text);
     border: 1px solid var(--color-deny-text);
   }
   .toggle-btn:hover:not(.active) {

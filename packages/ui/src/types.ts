@@ -12,12 +12,6 @@ export interface Block {
   raw: string;
 }
 
-export interface PlanData {
-  plan: string;
-  permissionMode: string;
-  version?: string;
-}
-
 export interface SessionSummary {
   sessionId: string;
   title: string;

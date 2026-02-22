@@ -232,11 +232,8 @@ async function main() {
   }
 
   // Save current plan version and load history
-  let previousPlans: Awaited<ReturnType<typeof loadHistory>> = [];
-  if (sessionId) {
-    saveVersion(sessionId, plan);
-    previousPlans = loadHistory(sessionId).filter((v) => v.plan !== plan);
-  }
+  saveVersion(sessionId, plan);
+  const previousPlans = loadHistory(sessionId).filter((v) => v.plan !== plan);
 
   // Resolve file snippets referenced in the plan
   const cwd = input.cwd || process.cwd();

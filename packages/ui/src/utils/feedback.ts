@@ -9,21 +9,22 @@ export function formatFeedback(
 
   const trimmedComment = generalComment?.trim();
   if (trimmedComment) {
-    parts.push("General feedback:\n");
-    parts.push(`> ${trimmedComment}\n`);
+    parts.push("General feedback:");
+    parts.push(`> ${trimmedComment}`);
   }
 
   if (annotations.length > 0) {
-    parts.push("Plan feedback:\n");
-    annotations.forEach((annotation, index) => {
-      if (annotation.selectedText) {
-        const truncated = truncateText(annotation.selectedText, 100);
-        parts.push(`## ${index + 1}. Feedback on: "${truncated}"`);
+    parts.push("Plan feedback:");
+    for (let i = 0; i < annotations.length; i++) {
+      const ann = annotations[i];
+      if (ann.selectedText) {
+        const truncated = truncateText(ann.selectedText, 100);
+        parts.push(`## ${i + 1}. Feedback on: "${truncated}"`);
       } else {
-        parts.push(`## ${index + 1}. Comment on block`);
+        parts.push(`## ${i + 1}. Comment on block`);
       }
-      parts.push(`> ${annotation.comment}\n`);
-    });
+      parts.push(`> ${ann.comment}`);
+    }
   }
 
   if (parts.length === 0) return "";

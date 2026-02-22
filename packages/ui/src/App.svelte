@@ -5,7 +5,6 @@
     Block,
     PlanVersion,
     SessionSummary,
-    FileSnippet,
   } from "./types";
   import { parseMarkdown } from "./utils/parser";
   import { formatFeedback } from "./utils/feedback";
@@ -123,6 +122,7 @@
   }
 
   function removeSessionFromUI(sessionId: string) {
+    if (!sessions.find((s) => s.sessionId === sessionId)) return;
     sessions = sessions.filter((s) => s.sessionId !== sessionId);
     sessionUIStates.delete(sessionId);
     clearDraft(sessionId);
@@ -223,11 +223,12 @@
   async function submitDecision(action: "approve" | "deny") {
     if (!activeSessionId || submitting) return;
     submitting = true;
+    const sid = activeSessionId;
     const nonEmpty = annotations.filter((a) => a.comment.trim());
     const feedback = formatFeedback(nonEmpty, generalComment);
     try {
       const res = await fetch(
-        `/api/sessions/${encodeURIComponent(activeSessionId)}/${action}`,
+        `/api/sessions/${encodeURIComponent(sid)}/${action}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -239,13 +240,8 @@
         submitting = false;
         return;
       }
-      clearDraft(activeSessionId);
-      // Don't set submitting = false here — wait for SSE session-removed event
-      // to avoid the plan briefly reappearing between POST response and SSE event.
-      // Safety timeout: if SSE never arrives, unblock UI after 30s
-      setTimeout(() => {
-        if (submitting) submitting = false;
-      }, 30000);
+      clearDraft(sid);
+      removeSessionFromUI(sid);
     } catch {
       error = "Network error. Please try again.";
       submitting = false;

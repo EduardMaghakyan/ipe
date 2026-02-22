@@ -2,6 +2,8 @@ import html from "../ui/dist/index.html" with { type: "text" };
 import type { PlanVersion } from "./history";
 import type { FileSnippet } from "./snippets";
 
+const encoder = new TextEncoder();
+
 export interface SessionInput {
   sessionId: string;
   plan: string;
@@ -77,7 +79,7 @@ export function startServer(options: ServerOptions = {}): {
     const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const ctrl of [...uiSSE]) {
       try {
-        ctrl.enqueue(new TextEncoder().encode(msg));
+        ctrl.enqueue(encoder.encode(msg));
       } catch {
         uiSSE.delete(ctrl);
       }
@@ -95,7 +97,7 @@ export function startServer(options: ServerOptions = {}): {
     const msg = `event: decision\ndata: ${JSON.stringify(decision)}\n\n`;
     for (const ctrl of [...session.hookSSE]) {
       try {
-        ctrl.enqueue(new TextEncoder().encode(msg));
+        ctrl.enqueue(encoder.encode(msg));
         ctrl.close();
       } catch {
         // already closed
@@ -192,7 +194,7 @@ export function startServer(options: ServerOptions = {}): {
             // Send current sessions as initial data
             const list = Array.from(sessions.values()).map(sessionToSummary);
             const msg = `event: init\ndata: ${JSON.stringify(list)}\n\n`;
-            controller.enqueue(new TextEncoder().encode(msg));
+            controller.enqueue(encoder.encode(msg));
           },
           cancel() {
             uiSSE.delete(ctrl);
@@ -228,29 +230,17 @@ export function startServer(options: ServerOptions = {}): {
           return Response.json(session.previousPlans);
         }
 
-        if (route.action === "approve" && req.method === "POST") {
+        if (
+          (route.action === "approve" || route.action === "deny") &&
+          req.method === "POST"
+        ) {
           return req
             .json()
             .then((body: { feedback?: string }) => {
+              const behavior =
+                route.action === "approve" ? "allow" : "deny";
               const ok = resolveSession(route.sessionId, {
-                behavior: "allow",
-                feedback: body.feedback || "",
-              });
-              if (!ok)
-                return Response.json({ error: "not found" }, { status: 404 });
-              return Response.json({ ok: true });
-            })
-            .catch(() =>
-              Response.json({ error: "invalid request body" }, { status: 400 }),
-            );
-        }
-
-        if (route.action === "deny" && req.method === "POST") {
-          return req
-            .json()
-            .then((body: { feedback?: string }) => {
-              const ok = resolveSession(route.sessionId, {
-                behavior: "deny",
+                behavior,
                 feedback: body.feedback || "",
               });
               if (!ok)
