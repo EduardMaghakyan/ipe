@@ -2,9 +2,11 @@
 
 Review Claude Code plans in a browser UI with inline comments, like a GitHub PR review.
 
-## How It Works
+## Features
 
-When Claude Code calls `ExitPlanMode`, IPE intercepts the request via a hook. It starts a local server, opens a browser tab where you can review the plan, add inline comments, and approve or request changes. Your decision and feedback are sent back to Claude Code automatically.
+- **GitHub-style code review** — inline comments, approve or request changes
+- **Multi-session support** — multiple concurrent Claude Code sessions share one server
+- **Plan version diff** — compare current plan against previous versions
 
 ## Install
 

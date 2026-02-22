@@ -7,8 +7,8 @@ test.describe("Plan Review", () => {
   });
 
   test("page loads and shows plan title from mock data", async ({ page }) => {
-    const title = page.locator(".toolbar-title");
-    await expect(title).toContainText("Refactor Authentication System");
+    const tab = page.locator(".session-tab.active");
+    await expect(tab).toContainText("Refactor Authentication System");
   });
 
   test("all block types render", async ({ page }) => {
@@ -142,9 +142,15 @@ test.describe("Plan Review", () => {
     await expect(textarea).toHaveValue("Overall this looks reasonable");
   });
 
-  test("Approve button sends POST /api/approve", async ({ page }) => {
+  test("Approve button sends POST to session approve endpoint", async ({
+    page,
+  }) => {
     const [request] = await Promise.all([
-      page.waitForRequest((req) => req.url().includes("/api/approve")),
+      page.waitForRequest(
+        (req) =>
+          req.url().includes("/approve") &&
+          req.url().includes("/api/sessions/"),
+      ),
       page.locator(".btn-approve").click(),
     ]);
     expect(request.method()).toBe("POST");
@@ -227,12 +233,17 @@ test.describe("Plan Review", () => {
     expect(await diffLines.count()).toBeGreaterThan(0);
   });
 
-  test("Request Changes button sends POST /api/deny", async ({ page }) => {
+  test("Request Changes button sends POST to session deny endpoint", async ({
+    page,
+  }) => {
     // Add general feedback first
     await page.locator(".general-comment-input").fill("Please revise step 2");
 
     const [request] = await Promise.all([
-      page.waitForRequest((req) => req.url().includes("/api/deny")),
+      page.waitForRequest(
+        (req) =>
+          req.url().includes("/deny") && req.url().includes("/api/sessions/"),
+      ),
       page.locator(".btn-deny").click(),
     ]);
     expect(request.method()).toBe("POST");

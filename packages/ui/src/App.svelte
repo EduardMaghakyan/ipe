@@ -1,22 +1,34 @@
 <script lang="ts">
-  import type { Annotation, Block, PlanData, PlanVersion } from "./types";
+  import { onMount } from "svelte";
+  import type { Annotation, Block, PlanVersion, SessionSummary } from "./types";
   import { parseMarkdown } from "./utils/parser";
   import { formatFeedback } from "./utils/feedback";
   import Toolbar from "./lib/Toolbar.svelte";
   import PlanViewer from "./lib/PlanViewer.svelte";
   import DiffOverlay from "./lib/DiffOverlay.svelte";
 
-  let plan = $state("");
+  interface SessionUIState {
+    annotations: Annotation[];
+    generalComment: string;
+    blocks: Block[];
+  }
+
+  let sessions = $state<SessionSummary[]>([]);
+  let activeSessionId = $state<string | null>(null);
+  // Store per-session UI state, keyed by sessionId
+  const sessionUIStates = new Map<string, SessionUIState>();
+
+  // Active session's direct state (for reactivity — same pattern as original code)
   let blocks = $state<Block[]>([]);
   let annotations = $state<Annotation[]>([]);
-  let versions = $state<PlanVersion[]>([]);
+  let generalComment = $state("");
+
   let version = $state("");
   let latestVersion = $state("");
   let showDiff = $state(false);
   let loading = $state(true);
   let error = $state("");
   let submitting = $state(false);
-  let generalComment = $state("");
   let theme = $state<"dark" | "light">(
     (localStorage.getItem("ipe-theme") as "dark" | "light") ?? "dark",
   );
@@ -30,28 +42,130 @@
     theme = theme === "dark" ? "light" : "dark";
   }
 
-  $effect(() => {
-    Promise.all([
-      fetch("/api/plan").then((r) => r.json()),
-      fetch("/api/history").then((r) => r.json()),
-    ])
-      .then(
-        ([data, history]: [
-          PlanData & { version?: string; latestVersion?: string },
-          PlanVersion[],
-        ]) => {
-          plan = data.plan;
-          blocks = parseMarkdown(data.plan);
-          versions = history;
-          version = data.version || "";
-          latestVersion = data.latestVersion || "";
-          loading = false;
-        },
-      )
+  function saveActiveState() {
+    if (activeSessionId) {
+      const state = sessionUIStates.get(activeSessionId);
+      if (state) {
+        state.annotations = annotations;
+        state.generalComment = generalComment;
+        state.blocks = blocks;
+      }
+    }
+  }
+
+  function loadSessionState(sessionId: string) {
+    const state = sessionUIStates.get(sessionId);
+    if (state) {
+      blocks = state.blocks;
+      annotations = state.annotations;
+      generalComment = state.generalComment;
+    }
+  }
+
+  function switchSession(sessionId: string) {
+    if (sessionId === activeSessionId) return;
+    saveActiveState();
+    activeSessionId = sessionId;
+    loadSessionState(sessionId);
+    showDiff = false;
+  }
+
+  function addSessionToUI(s: SessionSummary) {
+    sessions = [...sessions, s];
+    sessionUIStates.set(s.sessionId, {
+      annotations: [],
+      generalComment: "",
+      blocks: parseMarkdown(s.plan),
+    });
+    // Auto-select first session
+    if (!activeSessionId) {
+      activeSessionId = s.sessionId;
+      loadSessionState(s.sessionId);
+    }
+  }
+
+  function removeSessionFromUI(sessionId: string) {
+    sessions = sessions.filter((s) => s.sessionId !== sessionId);
+    sessionUIStates.delete(sessionId);
+    if (activeSessionId === sessionId) {
+      if (sessions.length > 0) {
+        activeSessionId = sessions[0].sessionId;
+        loadSessionState(activeSessionId);
+      } else {
+        activeSessionId = null;
+        blocks = [];
+        annotations = [];
+        generalComment = "";
+        window.close();
+      }
+    }
+  }
+
+  onMount(() => {
+    let es: EventSource | undefined;
+
+    // Fetch version info from health endpoint
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((data: { version?: string; latestVersion?: string }) => {
+        version = data.version || "";
+        latestVersion = data.latestVersion || "";
+      })
+      .catch(() => {});
+
+    fetch("/api/sessions")
+      .then((r) => r.json())
+      .then((list: SessionSummary[]) => {
+        for (const s of list) {
+          addSessionToUI(s);
+        }
+        loading = false;
+
+        // Connect SSE for real-time updates
+        es = new EventSource("/api/events");
+        es.addEventListener("session-added", (e) => {
+          const s = JSON.parse(e.data) as SessionSummary;
+          if (!sessions.find((x) => x.sessionId === s.sessionId)) {
+            addSessionToUI(s);
+          }
+        });
+        es.addEventListener("session-removed", (e) => {
+          const { sessionId } = JSON.parse(e.data) as { sessionId: string };
+          removeSessionFromUI(sessionId);
+        });
+      })
       .catch(() => {
-        error = "Failed to load plan. Please refresh.";
+        error = "Failed to load sessions. Please refresh.";
         loading = false;
       });
+
+    return () => {
+      es?.close();
+    };
+  });
+
+  let activeSession = $derived(
+    sessions.find((s) => s.sessionId === activeSessionId) ?? null,
+  );
+  let versions = $derived(activeSession?.previousPlans ?? []);
+
+  let title = $derived.by(() => {
+    const firstHeading = blocks.find((b) => b.type === "heading");
+    if (firstHeading) return firstHeading.content.replace(/^#+\s*/, "");
+    return "Plan Review";
+  });
+
+  let commentCounts = $derived.by(() => {
+    const counts: Record<string, number> = {};
+    for (const s of sessions) {
+      if (s.sessionId === activeSessionId) {
+        counts[s.sessionId] = annotations.length;
+      } else {
+        counts[s.sessionId] =
+          sessionUIStates.get(s.sessionId)?.annotations.length ?? 0;
+      }
+    }
+    return counts;
   });
 
   function addAnnotation(annotation: Annotation) {
@@ -66,23 +180,21 @@
     annotations = annotations.map((a) => (a.id === id ? { ...a, comment } : a));
   }
 
-  async function submitDecision(endpoint: string) {
+  async function submitDecision(action: "approve" | "deny") {
+    if (!activeSessionId) return;
     submitting = true;
     const nonEmpty = annotations.filter((a) => a.comment.trim());
     const feedback = formatFeedback(nonEmpty, generalComment);
-    await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ feedback }),
-    });
-    window.close();
+    await fetch(
+      `/api/sessions/${encodeURIComponent(activeSessionId)}/${action}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedback }),
+      },
+    );
+    submitting = false;
   }
-
-  let title = $derived.by(() => {
-    const firstHeading = blocks.find((b) => b.type === "heading");
-    if (firstHeading) return firstHeading.content.replace(/^#+\s*/, "");
-    return "Plan Review";
-  });
 </script>
 
 {#if loading}
@@ -90,11 +202,13 @@
 {:else if error}
   <div class="loading">{error}</div>
 {:else if submitting}
-  <div class="loading">Submitting... you can close this tab.</div>
+  <div class="loading">Submitting...</div>
+{:else if !activeSession}
+  <div class="loading">No pending plans.</div>
 {:else}
   {#if showDiff}
     <DiffOverlay
-      currentPlan={plan}
+      currentPlan={activeSession.plan}
       {versions}
       onClose={() => (showDiff = false)}
     />
@@ -103,13 +217,16 @@
     {title}
     {version}
     {latestVersion}
-    commentCount={annotations.length}
+    {commentCounts}
     versionCount={versions.length + 1}
     {theme}
+    {sessions}
+    {activeSessionId}
+    onSelect={switchSession}
     onToggleTheme={toggleTheme}
     onCompare={() => (showDiff = true)}
-    onApprove={() => submitDecision("/api/approve")}
-    onDeny={() => submitDecision("/api/deny")}
+    onApprove={() => submitDecision("approve")}
+    onDeny={() => submitDecision("deny")}
   />
   <main class="main">
     <PlanViewer

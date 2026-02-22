@@ -15,6 +15,16 @@ export interface Block {
 export interface PlanData {
   plan: string;
   permissionMode: string;
+  version?: string;
+}
+
+export interface SessionSummary {
+  sessionId: string;
+  title: string;
+  plan: string;
+  permissionMode: string;
+  previousPlans: PlanVersion[];
+  registeredAt: number;
 }
 
 export interface PlanVersion {
