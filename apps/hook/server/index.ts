@@ -134,7 +134,10 @@ async function waitForSSEDecision(
       `http://localhost:${port}/api/sessions/${encodeURIComponent(sessionId)}/events`,
       { signal: controller.signal },
     );
-    const reader = res.body!.getReader();
+    if (!res.ok || !res.body) {
+      throw new Error(`SSE connection failed: ${res.status} ${res.statusText}`);
+    }
+    const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
 
@@ -169,11 +172,17 @@ async function clientPath(
   permissionMode: string,
   previousPlans: Awaited<ReturnType<typeof loadHistory>>,
 ): Promise<void> {
-  await fetch(`http://localhost:${port}/api/sessions`, {
+  const res = await fetch(`http://localhost:${port}/api/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId, plan, permissionMode, previousPlans }),
   });
+
+  if (!res.ok) {
+    console.error(`IPE: failed to register with server: ${res.status}`);
+    outputDecision("deny", "Failed to register with IPE server. Please retry.");
+    return;
+  }
 
   console.error(
     `IPE ${VERSION} registered with server at http://localhost:${port}`,

@@ -72,7 +72,7 @@ export function startServer(options: ServerOptions = {}): {
 
   function broadcastUI(event: string, data: unknown) {
     const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-    for (const ctrl of uiSSE) {
+    for (const ctrl of [...uiSSE]) {
       try {
         ctrl.enqueue(new TextEncoder().encode(msg));
       } catch {
@@ -90,7 +90,7 @@ export function startServer(options: ServerOptions = {}): {
 
     // Notify hook SSE listeners
     const msg = `event: decision\ndata: ${JSON.stringify(decision)}\n\n`;
-    for (const ctrl of session.hookSSE) {
+    for (const ctrl of [...session.hookSSE]) {
       try {
         ctrl.enqueue(new TextEncoder().encode(msg));
         ctrl.close();
@@ -172,7 +172,7 @@ export function startServer(options: ServerOptions = {}): {
         return req.json().then((body: SessionInput) => {
           addSession(body);
           return Response.json({ ok: true });
-        });
+        }).catch(() => Response.json({ error: "invalid request body" }, { status: 400 }));
       }
 
       // UI SSE
@@ -228,7 +228,7 @@ export function startServer(options: ServerOptions = {}): {
             if (!ok)
               return Response.json({ error: "not found" }, { status: 404 });
             return Response.json({ ok: true });
-          });
+          }).catch(() => Response.json({ error: "invalid request body" }, { status: 400 }));
         }
 
         if (route.action === "deny" && req.method === "POST") {
@@ -240,7 +240,7 @@ export function startServer(options: ServerOptions = {}): {
             if (!ok)
               return Response.json({ error: "not found" }, { status: 404 });
             return Response.json({ ok: true });
-          });
+          }).catch(() => Response.json({ error: "invalid request body" }, { status: 400 }));
         }
 
         if (route.action === "events" && req.method === "GET") {
