@@ -7,8 +7,8 @@ test.describe("Plan Review", () => {
   });
 
   test("page loads and shows plan title from mock data", async ({ page }) => {
-    const title = page.locator(".toolbar-title");
-    await expect(title).toContainText("Refactor Authentication System");
+    const tab = page.locator(".session-tab.active");
+    await expect(tab).toContainText("Refactor Authentication System");
   });
 
   test("all block types render", async ({ page }) => {

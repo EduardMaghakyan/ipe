@@ -184,7 +184,10 @@ async function clientPath(
     outputDecision(decision.behavior, decision.feedback);
   } catch (err) {
     console.error(`IPE: lost connection to server: ${err}`);
-    outputDecision("deny", "IPE server disconnected before delivering decision. Please retry.");
+    outputDecision(
+      "deny",
+      "IPE server disconnected before delivering decision. Please retry.",
+    );
   }
 }
 
@@ -243,7 +246,7 @@ async function main() {
 
     await server.waitForDrain();
     // Grace period: allow in-flight SSE responses to be read by clients
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 500));
     server.stop();
     setTimeout(() => process.exit(0), 50);
   } else {
