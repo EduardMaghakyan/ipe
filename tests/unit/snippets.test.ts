@@ -128,4 +128,14 @@ describe("resolveSnippets", () => {
     expect(snippets[0].error).toBe("File not found");
     expect(snippets[0].content).toBe("");
   });
+
+  test("rejects path traversal", async () => {
+    const snippets = await resolveSnippets(
+      "Check `../../etc/secret.ts`",
+      tmpDir,
+    );
+    expect(snippets).toHaveLength(1);
+    expect(snippets[0].error).toBe("Path outside project directory");
+    expect(snippets[0].content).toBe("");
+  });
 });

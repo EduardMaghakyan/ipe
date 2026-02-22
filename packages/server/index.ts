@@ -50,17 +50,6 @@ function sessionToSummary(s: SessionState) {
   };
 }
 
-// Lighter summary for SSE broadcasts — omits fileSnippets (fetched on initial load)
-function sessionToSSESummary(s: SessionState) {
-  return {
-    sessionId: s.sessionId,
-    title: extractTitle(s.plan),
-    plan: s.plan,
-    permissionMode: s.permissionMode,
-    previousPlans: s.previousPlans,
-    registeredAt: s.registeredAt,
-  };
-}
 
 export function startServer(options: ServerOptions = {}): {
   port: number;
@@ -140,7 +129,7 @@ export function startServer(options: ServerOptions = {}): {
         hookSSE: new Set(),
       };
       sessions.set(input.sessionId, state);
-      broadcastUI("session-added", sessionToSSESummary(state));
+      broadcastUI("session-added", sessionToSummary(state));
     });
   }
 
@@ -201,8 +190,8 @@ export function startServer(options: ServerOptions = {}): {
           start(controller) {
             ctrl = controller;
             uiSSE.add(controller);
-            // Send current sessions as initial data (lightweight, without fileSnippets)
-            const list = Array.from(sessions.values()).map(sessionToSSESummary);
+            // Send current sessions as initial data
+            const list = Array.from(sessions.values()).map(sessionToSummary);
             const msg = `event: init\ndata: ${JSON.stringify(list)}\n\n`;
             controller.enqueue(new TextEncoder().encode(msg));
           },

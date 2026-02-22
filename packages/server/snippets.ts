@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { resolve, relative } from "node:path";
 
 export interface FileSnippet {
   path: string;
@@ -87,6 +87,7 @@ export function extractFileRefs(markdown: string): Array<{
 
 const CONTEXT_LINES = 5;
 const MAX_FILE_LINES = 200;
+const FILE_READ_TIMEOUT = 5000;
 
 export async function resolveSnippets(
   markdown: string,
@@ -97,8 +98,18 @@ export async function resolveSnippets(
 
   for (const ref of refs) {
     const fullPath = resolve(cwd, ref.path);
+    const rel = relative(cwd, fullPath);
+    if (rel.startsWith("..")) {
+      snippets.push({ path: ref.path, content: "", error: "Path outside project directory" });
+      continue;
+    }
     try {
-      const text = await readFile(fullPath, "utf-8");
+      const text = await Promise.race([
+        readFile(fullPath, "utf-8"),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("timeout")), FILE_READ_TIMEOUT),
+        ),
+      ]);
       const lines = text.split("\n");
 
       if (ref.startLine) {
@@ -125,11 +136,15 @@ export async function resolveSnippets(
           error: `File truncated (${lines.length} lines total)`,
         });
       }
-    } catch {
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message === "timeout"
+          ? "File read timed out"
+          : "File not found";
       snippets.push({
         path: ref.path,
         content: "",
-        error: "File not found",
+        error: msg,
       });
     }
   }

@@ -33,6 +33,7 @@
   let latestVersion = $state("");
   let showDiff = $state(false);
   let loading = $state(true);
+  let loadError = $state("");
   let error = $state("");
   let submitting = $state(false);
   let theme = $state<"dark" | "light">(
@@ -174,7 +175,7 @@
         });
       })
       .catch(() => {
-        error = "Failed to load sessions. Please refresh.";
+        loadError = "Failed to load sessions. Please refresh.";
         loading = false;
       });
 
@@ -250,13 +251,19 @@
 
 {#if loading}
   <div class="loading">Loading plan...</div>
-{:else if error}
-  <div class="loading">{error}</div>
+{:else if loadError}
+  <div class="loading">{loadError}</div>
 {:else if submitting}
   <div class="loading">Submitting...</div>
 {:else if !activeSession}
   <div class="loading">No pending plans.</div>
 {:else}
+  {#if error}
+    <div class="error-banner">
+      <span>{error}</span>
+      <button class="error-dismiss" onclick={() => (error = "")}>Dismiss</button>
+    </div>
+  {/if}
   {#if showDiff}
     <DiffOverlay
       currentPlan={activeSession.plan}
@@ -381,6 +388,31 @@
     height: 100vh;
     font-size: 1.1rem;
     color: var(--color-text-muted);
+  }
+  .error-banner {
+    position: fixed;
+    top: 49px;
+    left: 0;
+    right: 0;
+    z-index: 99;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: var(--color-delete-hover-bg);
+    border-bottom: 1px solid var(--color-delete-text);
+    color: var(--color-delete-text);
+    font-size: 0.875rem;
+  }
+  .error-dismiss {
+    background: none;
+    border: 1px solid var(--color-delete-text);
+    border-radius: 4px;
+    color: var(--color-delete-text);
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    cursor: pointer;
   }
   .main {
     max-width: 860px;
