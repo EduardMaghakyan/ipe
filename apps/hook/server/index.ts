@@ -64,13 +64,12 @@ async function main() {
     previousPlans = loadHistory(sessionId).filter((v) => v.plan !== plan);
   }
 
-  checkForUpdate(VERSION).then((latest) => {
-    if (latest) {
-      console.error(
-        `\nIPE ${latest} is available (current: ${VERSION}). Upgrade: curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash\n`,
-      );
-    }
-  });
+  const latestVersion = await checkForUpdate(VERSION);
+  if (latestVersion) {
+    console.error(
+      `\nIPE ${latestVersion} is available (current: ${VERSION}). Upgrade: curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash\n`,
+    );
+  }
 
   const done = new Promise<void>((resolve) => {
     const { port } = startServer({
@@ -78,6 +77,7 @@ async function main() {
       permissionMode,
       previousPlans,
       version: VERSION,
+      latestVersion: latestVersion || undefined,
       onApprove(feedback: string) {
         outputDecision("allow", feedback);
         resolve();

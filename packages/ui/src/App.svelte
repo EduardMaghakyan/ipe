@@ -11,6 +11,7 @@
   let annotations = $state<Annotation[]>([]);
   let versions = $state<PlanVersion[]>([]);
   let version = $state("");
+  let latestVersion = $state("");
   let showDiff = $state(false);
   let loading = $state(true);
   let error = $state("");
@@ -35,11 +36,15 @@
       fetch("/api/history").then((r) => r.json()),
     ])
       .then(
-        ([data, history]: [PlanData & { version?: string }, PlanVersion[]]) => {
+        ([data, history]: [
+          PlanData & { version?: string; latestVersion?: string },
+          PlanVersion[],
+        ]) => {
           plan = data.plan;
           blocks = parseMarkdown(data.plan);
           versions = history;
           version = data.version || "";
+          latestVersion = data.latestVersion || "";
           loading = false;
         },
       )
@@ -97,6 +102,7 @@
   <Toolbar
     {title}
     {version}
+    {latestVersion}
     commentCount={annotations.length}
     versionCount={versions.length + 1}
     {theme}

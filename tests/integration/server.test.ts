@@ -132,4 +132,42 @@ describe("startServer", () => {
     expect(data[0].version).toBe(1);
     expect(data[1].plan).toBe("# Updated Plan");
   });
+
+  test("GET /api/plan returns latestVersion when provided", async () => {
+    const { port } = createServer({
+      version: "v0.1.2",
+      latestVersion: "v0.2.0",
+    });
+    const res = await fetch(`http://localhost:${port}/api/plan`);
+    const data = await res.json();
+    expect(data.version).toBe("v0.1.2");
+    expect(data.latestVersion).toBe("v0.2.0");
+  });
+
+  test("GET /api/plan omits latestVersion when not provided", async () => {
+    const { port } = createServer();
+    const res = await fetch(`http://localhost:${port}/api/plan`);
+    const data = await res.json();
+    expect(data.latestVersion).toBeUndefined();
+  });
+
+  test("POST /api/upgrade returns success on exit code 0", async () => {
+    const { port } = createServer({ upgradeCommand: ["true"] });
+    const res = await fetch(`http://localhost:${port}/api/upgrade`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+  });
+
+  test("POST /api/upgrade returns error on non-zero exit", async () => {
+    const { port } = createServer({ upgradeCommand: ["false"] });
+    const res = await fetch(`http://localhost:${port}/api/upgrade`, {
+      method: "POST",
+    });
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.ok).toBe(false);
+  });
 });
