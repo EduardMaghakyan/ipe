@@ -15,7 +15,9 @@ function mockApiPlugin() {
             "utf-8",
           );
           res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify({ plan, permissionMode: "plan", version: "dev" }));
+          res.end(
+            JSON.stringify({ plan, permissionMode: "plan", version: "dev" }),
+          );
           return;
         }
 

@@ -34,13 +34,15 @@
       fetch("/api/plan").then((r) => r.json()),
       fetch("/api/history").then((r) => r.json()),
     ])
-      .then(([data, history]: [PlanData & { version?: string }, PlanVersion[]]) => {
-        plan = data.plan;
-        blocks = parseMarkdown(data.plan);
-        versions = history;
-        version = data.version || "";
-        loading = false;
-      })
+      .then(
+        ([data, history]: [PlanData & { version?: string }, PlanVersion[]]) => {
+          plan = data.plan;
+          blocks = parseMarkdown(data.plan);
+          versions = history;
+          version = data.version || "";
+          loading = false;
+        },
+      )
       .catch(() => {
         error = "Failed to load plan. Please refresh.";
         loading = false;
