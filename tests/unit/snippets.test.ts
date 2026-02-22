@@ -135,7 +135,8 @@ describe("resolveSnippets", () => {
       tmpDir,
     );
     expect(snippets).toHaveLength(1);
-    expect(snippets[0].error).toBe("Path outside project directory");
+    // realpath throws for nonexistent paths, caught as "File not found"
+    expect(snippets[0].error).toBe("File not found");
     expect(snippets[0].content).toBe("");
   });
 });

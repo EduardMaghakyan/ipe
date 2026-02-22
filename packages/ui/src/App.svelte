@@ -241,7 +241,11 @@
       }
       clearDraft(activeSessionId);
       // Don't set submitting = false here — wait for SSE session-removed event
-      // to avoid the plan briefly reappearing between POST response and SSE event
+      // to avoid the plan briefly reappearing between POST response and SSE event.
+      // Safety timeout: if SSE never arrives, unblock UI after 30s
+      setTimeout(() => {
+        if (submitting) submitting = false;
+      }, 30000);
     } catch {
       error = "Network error. Please try again.";
       submitting = false;
@@ -259,7 +263,7 @@
   <div class="loading">No pending plans.</div>
 {:else}
   {#if error}
-    <div class="error-banner">
+    <div class="error-banner" role="alert">
       <span>{error}</span>
       <button class="error-dismiss" onclick={() => (error = "")}>Dismiss</button>
     </div>
@@ -394,7 +398,7 @@
     top: 49px;
     left: 0;
     right: 0;
-    z-index: 99;
+    z-index: 101;
     display: flex;
     align-items: center;
     justify-content: center;

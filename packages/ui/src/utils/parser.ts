@@ -67,25 +67,28 @@ export function parseMarkdown(markdown: string): Block[] {
       continue;
     }
 
-    // List (unordered or ordered)
+    // List (unordered or ordered) — one block per item
     if (/^(\s*[-*+]|\s*\d+\.)\s/.test(line)) {
-      const listLines = [line];
+      let itemLines = [line];
       i++;
-      while (
-        i < lines.length &&
-        (/^(\s*[-*+]|\s*\d+\.)\s/.test(lines[i]) ||
-          (lines[i].startsWith("  ") && lines[i].trim() !== ""))
-      ) {
-        listLines.push(lines[i]);
-        i++;
+      while (i < lines.length) {
+        if (/^(\s*[-*+]|\s*\d+\.)\s/.test(lines[i])) {
+          // New list item — flush current item
+          const raw = itemLines.join("\n");
+          blocks.push({ id: `block-${blockIndex++}`, type: "list", content: raw, raw });
+          itemLines = [lines[i]];
+          i++;
+        } else if (lines[i].startsWith("  ") && lines[i].trim() !== "") {
+          // Continuation line — append to current item
+          itemLines.push(lines[i]);
+          i++;
+        } else {
+          break;
+        }
       }
-      const raw = listLines.join("\n");
-      blocks.push({
-        id: `block-${blockIndex++}`,
-        type: "list",
-        content: raw,
-        raw,
-      });
+      // Flush last item
+      const raw = itemLines.join("\n");
+      blocks.push({ id: `block-${blockIndex++}`, type: "list", content: raw, raw });
       continue;
     }
 

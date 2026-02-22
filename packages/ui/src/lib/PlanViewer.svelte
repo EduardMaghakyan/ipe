@@ -419,13 +419,17 @@
   .block :global(.file-ref:hover) {
     background: rgba(88, 166, 255, 0.1);
   }
+  .block.list {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
   .block :global(ul),
   .block :global(ol) {
     padding-left: 24px;
-    margin: 8px 0;
+    margin: 0;
   }
   .block :global(li) {
-    margin: 4px 0;
+    margin: 2px 0;
   }
   .block :global(blockquote) {
     border-left: 3px solid var(--color-border);

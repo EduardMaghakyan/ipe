@@ -141,24 +141,28 @@ async function waitForSSEDecision(
     const decoder = new TextDecoder();
     let buffer = "";
 
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) throw new Error("SSE stream ended without decision");
-      buffer += decoder.decode(value, { stream: true });
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) throw new Error("SSE stream ended without decision");
+        buffer += decoder.decode(value, { stream: true });
 
-      const lines = buffer.split("\n");
-      for (let i = 0; i < lines.length - 1; i++) {
-        const line = lines[i];
-        if (line.startsWith("data: ")) {
-          const data = line.slice(6);
-          try {
-            return JSON.parse(data) as SessionDecision;
-          } catch {
-            // not the event we're looking for
+        const lines = buffer.split("\n");
+        for (let i = 0; i < lines.length - 1; i++) {
+          const line = lines[i];
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            try {
+              return JSON.parse(data) as SessionDecision;
+            } catch {
+              // not the event we're looking for
+            }
           }
         }
+        buffer = lines[lines.length - 1];
       }
-      buffer = lines[lines.length - 1];
+    } finally {
+      reader.releaseLock();
     }
   } finally {
     clearTimeout(timeout);
@@ -285,4 +289,8 @@ async function main() {
   }
 }
 
-main();
+main().catch((err) => {
+  console.error("IPE fatal error:", err);
+  outputDecision("deny", "IPE internal error. Please retry.");
+  process.exit(1);
+});

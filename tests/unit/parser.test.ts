@@ -30,16 +30,22 @@ describe("parseMarkdown", () => {
     expect(blocks[0].content).toContain("const x = 1;");
   });
 
-  test("parses unordered lists", () => {
+  test("parses unordered lists as per-item blocks", () => {
     const blocks = parseMarkdown("- item 1\n- item 2\n- item 3");
-    expect(blocks).toHaveLength(1);
+    expect(blocks).toHaveLength(3);
     expect(blocks[0].type).toBe("list");
+    expect(blocks[0].content).toBe("- item 1");
+    expect(blocks[1].content).toBe("- item 2");
+    expect(blocks[2].content).toBe("- item 3");
   });
 
-  test("parses ordered lists", () => {
+  test("parses ordered lists as per-item blocks", () => {
     const blocks = parseMarkdown("1. first\n2. second\n3. third");
-    expect(blocks).toHaveLength(1);
+    expect(blocks).toHaveLength(3);
     expect(blocks[0].type).toBe("list");
+    expect(blocks[0].content).toBe("1. first");
+    expect(blocks[1].content).toBe("2. second");
+    expect(blocks[2].content).toBe("3. third");
   });
 
   test("parses tables", () => {

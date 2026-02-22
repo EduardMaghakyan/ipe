@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { resolve, relative } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { resolve } from "node:path";
 
 export interface FileSnippet {
   path: string;
@@ -98,18 +98,30 @@ export async function resolveSnippets(
 
   for (const ref of refs) {
     const fullPath = resolve(cwd, ref.path);
-    const rel = relative(cwd, fullPath);
-    if (rel.startsWith("..")) {
-      snippets.push({ path: ref.path, content: "", error: "Path outside project directory" });
+
+    // Resolve symlinks and verify path stays within project directory
+    let realFullPath: string;
+    try {
+      const realCwd = await realpath(cwd);
+      realFullPath = await realpath(fullPath);
+      if (!realFullPath.startsWith(realCwd + "/")) {
+        snippets.push({ path: ref.path, content: "", error: "Path outside project directory" });
+        continue;
+      }
+    } catch {
+      snippets.push({ path: ref.path, content: "", error: "File not found" });
       continue;
     }
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const text = await Promise.race([
-        readFile(fullPath, "utf-8"),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("timeout")), FILE_READ_TIMEOUT),
-        ),
+        readFile(realFullPath, "utf-8"),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("timeout")), FILE_READ_TIMEOUT);
+        }),
       ]);
+      clearTimeout(timer);
       const lines = text.split("\n");
 
       if (ref.startLine) {
@@ -137,6 +149,7 @@ export async function resolveSnippets(
         });
       }
     } catch (err) {
+      clearTimeout(timer);
       const msg =
         err instanceof Error && err.message === "timeout"
           ? "File read timed out"
