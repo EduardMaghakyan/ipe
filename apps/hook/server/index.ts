@@ -1,4 +1,4 @@
-import { startServer } from "../../../packages/server/index.ts";
+import { startServer, type SessionDecision } from "../../../packages/server/index.ts";
 import { openBrowser } from "../../../packages/server/browser.ts";
 import { loadHistory, saveVersion } from "../../../packages/server/history.ts";
 import { checkForUpdate } from "../../../packages/server/update.ts";
@@ -15,11 +15,6 @@ interface HookInput {
   session_id?: string;
   permission_mode?: string;
   [key: string]: unknown;
-}
-
-interface SessionDecision {
-  behavior: "allow" | "deny";
-  feedback: string;
 }
 
 async function readStdin(): Promise<string> {
@@ -60,20 +55,9 @@ function tryStartServer(
   try {
     return startServer({ port, version });
   } catch (err: unknown) {
-    if (
-      err &&
-      typeof err === "object" &&
-      "code" in err &&
-      (err as { code: string }).code === "EADDRINUSE"
-    ) {
-      return null;
-    }
     const message = err instanceof Error ? err.message : String(err);
-    if (
-      message.includes("EADDRINUSE") ||
-      message.includes("address already in use") ||
-      message.includes("Is port") // Bun's "Is port X in use?"
-    ) {
+    const code = err && typeof err === "object" && "code" in err ? (err as { code: string }).code : "";
+    if (code === "EADDRINUSE" || message.includes("EADDRINUSE") || message.includes("address already in use")) {
       return null;
     }
     throw err;

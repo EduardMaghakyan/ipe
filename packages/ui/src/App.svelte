@@ -23,7 +23,6 @@
   let annotations = $state<Annotation[]>([]);
   let generalComment = $state("");
 
-  let version = $state("");
   let showDiff = $state(false);
   let loading = $state(true);
   let error = $state("");
@@ -205,7 +204,6 @@
   {/if}
   <Toolbar
     {title}
-    {version}
     {commentCounts}
     versionCount={versions.length + 1}
     {theme}

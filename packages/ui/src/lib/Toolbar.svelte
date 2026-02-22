@@ -3,7 +3,6 @@
 
   interface Props {
     title: string;
-    version?: string;
     commentCounts: Record<string, number>;
     versionCount: number;
     theme: "dark" | "light";
@@ -18,7 +17,6 @@
 
   let {
     title,
-    version = "",
     commentCounts,
     versionCount,
     theme,
@@ -51,9 +49,6 @@
       {/each}
     {:else}
       <span class="toolbar-title">{title}</span>
-      {#if version && version !== "dev"}
-        <span class="version">{version}</span>
-      {/if}
       {#if activeSessionId && commentCounts[activeSessionId] > 0}
         <span class="badge"
           >{commentCounts[activeSessionId]} comment{commentCounts[
@@ -122,11 +117,6 @@
     font-weight: 600;
     font-size: 1rem;
     color: var(--color-text-emphasis);
-  }
-  .version {
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-    font-weight: 400;
   }
   .badge {
     background: var(--color-border);

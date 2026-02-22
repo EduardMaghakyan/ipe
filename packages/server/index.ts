@@ -53,21 +53,16 @@ export function startServer(options: ServerOptions = {}): {
   const sessions = new Map<string, SessionState>();
   const uiSSE = new Set<ReadableStreamDefaultController>();
 
-  let drainResolve: (() => void) | null = null;
-  let drainPromise: Promise<void> | null = null;
+  let drain: { promise: Promise<void>; resolve: () => void } | null = null;
 
-  function resetDrainPromise() {
-    if (!drainPromise) {
-      drainPromise = new Promise<void>((r) => {
-        drainResolve = r;
-      });
-    }
-  }
-
-  function getDrainPromise(): Promise<void> {
+  function waitForDrain(): Promise<void> {
     if (sessions.size === 0) return Promise.resolve();
-    resetDrainPromise();
-    return drainPromise!;
+    if (!drain) {
+      let resolve!: () => void;
+      const promise = new Promise<void>((r) => { resolve = r; });
+      drain = { promise, resolve };
+    }
+    return drain.promise;
   }
 
   function broadcastUI(event: string, data: unknown) {
@@ -105,17 +100,14 @@ export function startServer(options: ServerOptions = {}): {
 
     // Check if all sessions are done
     if (sessions.size === 0) {
-      drainResolve?.();
-      drainResolve = null;
-      drainPromise = null;
+      drain?.resolve();
+      drain = null;
     }
 
     return true;
   }
 
   function addSession(input: SessionInput): Promise<SessionDecision> {
-    resetDrainPromise();
-
     return new Promise<SessionDecision>((resolve) => {
       const state: SessionState = {
         sessionId: input.sessionId,
@@ -177,8 +169,10 @@ export function startServer(options: ServerOptions = {}): {
 
       // UI SSE
       if (req.method === "GET" && url.pathname === "/api/events") {
+        let ctrl: ReadableStreamDefaultController;
         const stream = new ReadableStream({
           start(controller) {
+            ctrl = controller;
             uiSSE.add(controller);
             // Send current sessions as initial data
             const list = Array.from(sessions.values()).map(sessionToSummary);
@@ -186,7 +180,7 @@ export function startServer(options: ServerOptions = {}): {
             controller.enqueue(new TextEncoder().encode(msg));
           },
           cancel() {
-            // Controller will be cleaned up on next broadcast
+            uiSSE.delete(ctrl);
           },
         });
         return new Response(stream, {
@@ -275,6 +269,6 @@ export function startServer(options: ServerOptions = {}): {
     port: server.port,
     stop: () => server.stop(),
     addSession,
-    waitForDrain: getDrainPromise,
+    waitForDrain,
   };
 }
