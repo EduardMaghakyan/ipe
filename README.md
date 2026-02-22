@@ -4,9 +4,10 @@ Review Claude Code plans in a browser UI with inline comments, like a GitHub PR 
 
 ## Features
 
-- **GitHub-style code review** — inline comments, approve or request changes
-- **Multi-session support** — multiple concurrent Claude Code sessions share one server
-- **Plan version diff** — compare current plan against previous versions
+- **GitHub-style code review** — inline comments on any block or text selection, approve or request changes
+- **File snippet preview** — click any backtick-wrapped file reference (e.g. `` `src/index.ts` ``) to open a resizable side drawer with syntax-highlighted source code
+- **Plan version diff** — compare current plan against previous versions with side-by-side or inline views
+- **Multi-session support** — multiple concurrent Claude Code sessions share one server, switch between plans via tabs
 
 ## Install
 
