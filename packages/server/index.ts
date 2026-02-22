@@ -1,11 +1,13 @@
 import html from "../ui/dist/index.html" with { type: "text" };
 import type { PlanVersion } from "./history";
+import type { FileSnippet } from "./snippets";
 
 export interface SessionInput {
   sessionId: string;
   plan: string;
   permissionMode: string;
   previousPlans?: PlanVersion[];
+  fileSnippets?: FileSnippet[];
 }
 
 export interface SessionDecision {
@@ -18,6 +20,7 @@ interface SessionState {
   plan: string;
   permissionMode: string;
   previousPlans: PlanVersion[];
+  fileSnippets: FileSnippet[];
   registeredAt: number;
   resolve: (decision: SessionDecision) => void;
   hookSSE: Set<ReadableStreamDefaultController>;
@@ -42,6 +45,7 @@ function sessionToSummary(s: SessionState) {
     plan: s.plan,
     permissionMode: s.permissionMode,
     previousPlans: s.previousPlans,
+    fileSnippets: s.fileSnippets,
     registeredAt: s.registeredAt,
   };
 }
@@ -116,6 +120,7 @@ export function startServer(options: ServerOptions = {}): {
         plan: input.plan,
         permissionMode: input.permissionMode,
         previousPlans: input.previousPlans ?? [],
+        fileSnippets: input.fileSnippets ?? [],
         registeredAt: Date.now(),
         resolve,
         hookSSE: new Set(),

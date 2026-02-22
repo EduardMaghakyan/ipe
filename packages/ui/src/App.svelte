@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { Annotation, Block, PlanVersion, SessionSummary } from "./types";
+  import type { Annotation, Block, PlanVersion, SessionSummary, FileSnippet } from "./types";
   import { parseMarkdown } from "./utils/parser";
   import { formatFeedback } from "./utils/feedback";
   import Toolbar from "./lib/Toolbar.svelte";
@@ -256,6 +256,7 @@
     <PlanViewer
       {blocks}
       {annotations}
+      fileSnippets={activeSession?.fileSnippets}
       onAddAnnotation={addAnnotation}
       onRemoveAnnotation={removeAnnotation}
       onUpdateAnnotation={updateAnnotation}

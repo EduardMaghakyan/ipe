@@ -24,6 +24,7 @@ export interface SessionSummary {
   plan: string;
   permissionMode: string;
   previousPlans: PlanVersion[];
+  fileSnippets?: FileSnippet[];
   registeredAt: number;
 }
 
@@ -31,4 +32,12 @@ export interface PlanVersion {
   version: number;
   plan: string;
   timestamp: number;
+}
+
+export interface FileSnippet {
+  path: string;
+  startLine?: number;
+  endLine?: number;
+  content: string;
+  error?: string;
 }

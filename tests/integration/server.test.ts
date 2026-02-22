@@ -189,6 +189,24 @@ describe("multi-session server", () => {
     expect(res.status).toBe(404);
   });
 
+  test("fileSnippets are included in session summary", async () => {
+    const { port, addSession } = createServer();
+    const snippets = [{ path: "src/index.ts", content: "console.log('hello')" }];
+
+    addSession({
+      sessionId: "s1",
+      plan: "# Plan",
+      permissionMode: "plan",
+      fileSnippets: snippets,
+    });
+
+    const res = await fetch(`http://localhost:${port}/api/sessions`);
+    const data = await res.json();
+    expect(data[0].fileSnippets).toHaveLength(1);
+    expect(data[0].fileSnippets[0].path).toBe("src/index.ts");
+    expect(data[0].fileSnippets[0].content).toBe("console.log('hello')");
+  });
+
   test("GET /api/health returns latestVersion when provided", async () => {
     const { port } = createServer({
       version: "v0.1.2",

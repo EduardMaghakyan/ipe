@@ -112,6 +112,27 @@ Add a \`/api/health/db\` endpoint that reports pool statistics:
     .replace("## Step 3: Add health monitoring", "## Step 3: Add monitoring")
     .replace("max: 20,", "max: 10,");
 
+  const mockFileSnippets = [
+    {
+      path: "auth/jwt.ts",
+      content: `import { sign, verify, JwtPayload } from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+
+export function createAccessToken(userId: string): string {
+  return sign({ sub: userId }, JWT_SECRET, { expiresIn: "15m" });
+}
+
+export function createRefreshToken(userId: string): string {
+  return sign({ sub: userId, type: "refresh" }, JWT_SECRET, { expiresIn: "7d" });
+}
+
+export function verifyToken(token: string): JwtPayload {
+  return verify(token, JWT_SECRET) as JwtPayload;
+}`,
+    },
+  ];
+
   const mockSessions = () => {
     const p = plan();
     return [
@@ -120,6 +141,7 @@ Add a \`/api/health/db\` endpoint that reports pool statistics:
         title: "Refactor Authentication System",
         plan: p,
         permissionMode: "plan",
+        fileSnippets: mockFileSnippets,
         previousPlans: [
           {
             version: 1,
@@ -139,6 +161,7 @@ Add a \`/api/health/db\` endpoint that reports pool statistics:
         title: "Add Dark Mode Support",
         plan: darkModePlan,
         permissionMode: "plan",
+        fileSnippets: [],
         previousPlans: [],
         registeredAt: Date.now() - 60000,
       },
@@ -147,6 +170,7 @@ Add a \`/api/health/db\` endpoint that reports pool statistics:
         title: "Fix Database Connection Pooling",
         plan: dbPoolPlan,
         permissionMode: "default",
+        fileSnippets: [],
         previousPlans: [
           {
             version: 1,

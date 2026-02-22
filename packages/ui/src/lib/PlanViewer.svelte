@@ -1,12 +1,14 @@
 <script lang="ts">
-  import type { Annotation, Block } from "../types";
+  import type { Annotation, Block, FileSnippet } from "../types";
   import { isDiffContent, escapeHtml } from "../utils/diff";
   import SelectionPopup from "./SelectionPopup.svelte";
   import InlineComment from "./InlineComment.svelte";
+  import FileSnippetPanel from "./FileSnippetPanel.svelte";
 
   interface Props {
     blocks: Block[];
     annotations: Annotation[];
+    fileSnippets?: FileSnippet[];
     onAddAnnotation: (a: Annotation) => void;
     onRemoveAnnotation: (id: string) => void;
     onUpdateAnnotation: (id: string, comment: string) => void;
@@ -15,6 +17,7 @@
   let {
     blocks,
     annotations,
+    fileSnippets = [],
     onAddAnnotation,
     onRemoveAnnotation,
     onUpdateAnnotation,
@@ -27,6 +30,34 @@
     text: string;
   } | null>(null);
   let editingId = $state<string | null>(null);
+  let activeSnippet = $state<{ snippet: FileSnippet; x: number; y: number } | null>(null);
+
+  // Build a lookup map from file paths to snippets
+  let snippetMap = $derived.by(() => {
+    const map = new Map<string, FileSnippet>();
+    for (const s of fileSnippets) {
+      map.set(s.path, s);
+    }
+    return map;
+  });
+
+  function handleFileRefClick(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    const ref = target.closest("[data-file-path]") as HTMLElement | null;
+    if (!ref) return;
+    const path = ref.dataset.filePath;
+    if (!path) return;
+    const snippet = snippetMap.get(path);
+    if (!snippet) return;
+
+    const rect = ref.getBoundingClientRect();
+    activeSnippet = {
+      snippet,
+      x: Math.max(8, Math.min(rect.left, window.innerWidth - 720)),
+      y: rect.bottom + 8,
+    };
+    e.stopPropagation();
+  }
 
   function handleMouseUp(blockId: string) {
     const sel = window.getSelection();
@@ -92,6 +123,9 @@
     ) {
       popup = null;
     }
+    if (!target.closest(".file-snippet-panel") && !target.closest("[data-file-path]")) {
+      activeSnippet = null;
+    }
   }
 
   function getBlockAnnotations(blockId: string): Annotation[] {
@@ -106,7 +140,14 @@
     return escapeHtml(text)
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>")
-      .replace(/`(.+?)`/g, '<code class="inline-code">$1</code>')
+      .replace(/`(.+?)`/g, (_match, code: string) => {
+        // Strip line ref suffix to check against snippet map
+        const pathPart = code.replace(/:.*$/, "");
+        if (snippetMap.has(pathPart)) {
+          return `<code class="inline-code file-ref" data-file-path="${escapeHtml(pathPart)}">${code}</code>`;
+        }
+        return `<code class="inline-code">${code}</code>`;
+      })
       .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>');
   }
 
@@ -215,7 +256,17 @@
   <SelectionPopup x={popup.x} y={popup.y} onAddComment={handleAddComment} />
 {/if}
 
-<div class="plan-viewer">
+{#if activeSnippet}
+  <FileSnippetPanel
+    snippet={activeSnippet.snippet}
+    x={activeSnippet.x}
+    y={activeSnippet.y}
+    onClose={() => (activeSnippet = null)}
+  />
+{/if}
+
+<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+<div class="plan-viewer" onclick={handleFileRefClick}>
   {#each blocks as block (block.id)}
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
@@ -350,6 +401,15 @@
     padding: 2px 6px;
     border-radius: 3px;
     font-size: 0.85em;
+  }
+  .block :global(.file-ref) {
+    cursor: pointer;
+    border-bottom: 1px dashed var(--color-link);
+    color: var(--color-link);
+    transition: background 0.1s;
+  }
+  .block :global(.file-ref:hover) {
+    background: rgba(88, 166, 255, 0.1);
   }
   .block :global(ul),
   .block :global(ol) {

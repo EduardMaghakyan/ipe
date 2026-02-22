@@ -273,6 +273,30 @@ test.describe("Plan Review", () => {
     );
   });
 
+  test("clicking a file reference shows snippet panel", async ({ page }) => {
+    // The mock plan references `auth/jwt.ts` and mock data includes a snippet for it
+    const fileRef = page.locator(".file-ref").first();
+    await expect(fileRef).toBeVisible();
+    await expect(fileRef).toHaveAttribute("data-file-path", "auth/jwt.ts");
+
+    // Click the file ref
+    await fileRef.click();
+
+    // Snippet panel should appear
+    const panel = page.locator(".file-snippet-panel");
+    await expect(panel).toBeVisible();
+
+    // Should show the file path
+    await expect(panel.locator(".snippet-path")).toContainText("auth/jwt.ts");
+
+    // Should show code content
+    await expect(panel.locator(".snippet-code")).toBeVisible();
+
+    // Close the panel
+    await panel.locator(".snippet-close").click();
+    await expect(panel).not.toBeVisible();
+  });
+
   test("Request Changes button sends POST to session deny endpoint", async ({
     page,
   }) => {

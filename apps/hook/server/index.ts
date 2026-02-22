@@ -2,6 +2,7 @@ import { startServer, type SessionDecision } from "../../../packages/server/inde
 import { openBrowser } from "../../../packages/server/browser.ts";
 import { loadHistory, saveVersion } from "../../../packages/server/history.ts";
 import { checkForUpdate } from "../../../packages/server/update.ts";
+import { resolveSnippets } from "../../../packages/server/snippets.ts";
 
 const VERSION = "dev";
 const DEFAULT_PORT = 19450;
@@ -14,6 +15,7 @@ interface HookInput {
   };
   session_id?: string;
   permission_mode?: string;
+  cwd?: string;
   [key: string]: unknown;
 }
 
@@ -156,11 +158,12 @@ async function clientPath(
   plan: string,
   permissionMode: string,
   previousPlans: Awaited<ReturnType<typeof loadHistory>>,
+  fileSnippets: Awaited<ReturnType<typeof resolveSnippets>>,
 ): Promise<void> {
   const res = await fetch(`http://localhost:${port}/api/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId, plan, permissionMode, previousPlans }),
+    body: JSON.stringify({ sessionId, plan, permissionMode, previousPlans, fileSnippets }),
   });
 
   if (!res.ok) {
@@ -212,6 +215,10 @@ async function main() {
     previousPlans = loadHistory(sessionId).filter((v) => v.plan !== plan);
   }
 
+  // Resolve file snippets referenced in the plan
+  const cwd = input.cwd || process.cwd();
+  const fileSnippets = resolveSnippets(plan, cwd);
+
   const latestVersion = await checkForUpdate(VERSION);
   if (latestVersion) {
     console.error(
@@ -228,6 +235,7 @@ async function main() {
       plan,
       permissionMode,
       previousPlans,
+      fileSnippets,
     });
 
     const url = `http://localhost:${port}`;
@@ -244,7 +252,7 @@ async function main() {
     setTimeout(() => process.exit(0), 50);
   } else {
     // Server already running — join as client
-    await clientPath(port, sessionId, plan, permissionMode, previousPlans);
+    await clientPath(port, sessionId, plan, permissionMode, previousPlans, fileSnippets);
   }
 }
 
