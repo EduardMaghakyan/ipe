@@ -233,6 +233,46 @@ test.describe("Plan Review", () => {
     expect(await diffLines.count()).toBeGreaterThan(0);
   });
 
+  test("comments and general feedback persist after page reload", async ({
+    page,
+  }) => {
+    // Add inline comment
+    const paragraph = page.locator(".block.paragraph").first();
+    await paragraph.evaluate((el) => {
+      const textNode = el.querySelector("p")?.firstChild;
+      if (!textNode) return;
+      const range = document.createRange();
+      range.setStart(textNode, 0);
+      range.setEnd(textNode, Math.min(10, textNode.textContent!.length));
+      const sel = window.getSelection()!;
+      sel.removeAllRanges();
+      sel.addRange(range);
+    });
+    await paragraph.dispatchEvent("mouseup");
+    await page.locator(".popup-btn").click();
+    await page.locator(".comment-input").fill("Persisted comment");
+    await page.locator(".action-btn.save").click();
+    await expect(page.locator(".comment-body")).toContainText(
+      "Persisted comment",
+    );
+
+    // Add general feedback
+    await page
+      .locator(".general-comment-input")
+      .fill("General feedback persisted");
+
+    // Reload and verify
+    await page.reload();
+    await page.waitForSelector(".plan-viewer");
+
+    await expect(page.locator(".comment-body")).toContainText(
+      "Persisted comment",
+    );
+    await expect(page.locator(".general-comment-input")).toHaveValue(
+      "General feedback persisted",
+    );
+  });
+
   test("Request Changes button sends POST to session deny endpoint", async ({
     page,
   }) => {

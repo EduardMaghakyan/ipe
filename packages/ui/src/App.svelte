@@ -38,8 +38,28 @@
     localStorage.setItem("ipe-theme", theme);
   });
 
+  $effect(() => {
+    if (activeSessionId) {
+      saveDraft(activeSessionId, annotations, generalComment);
+    }
+  });
+
   function toggleTheme() {
     theme = theme === "dark" ? "light" : "dark";
+  }
+
+  function saveDraft(sessionId: string, ann: Annotation[], comment: string) {
+    localStorage.setItem(`ipe-draft-${sessionId}`, JSON.stringify({ annotations: ann, generalComment: comment }));
+  }
+
+  function loadDraft(sessionId: string): { annotations: Annotation[]; generalComment: string } | null {
+    const raw = localStorage.getItem(`ipe-draft-${sessionId}`);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+
+  function clearDraft(sessionId: string) {
+    localStorage.removeItem(`ipe-draft-${sessionId}`);
   }
 
   function saveActiveState() {
@@ -50,6 +70,7 @@
         state.generalComment = generalComment;
         state.blocks = blocks;
       }
+      saveDraft(activeSessionId, annotations, generalComment);
     }
   }
 
@@ -71,10 +92,11 @@
   }
 
   function addSessionToUI(s: SessionSummary) {
+    const saved = loadDraft(s.sessionId);
     sessions = [...sessions, s];
     sessionUIStates.set(s.sessionId, {
-      annotations: [],
-      generalComment: "",
+      annotations: saved?.annotations ?? [],
+      generalComment: saved?.generalComment ?? "",
       blocks: parseMarkdown(s.plan),
     });
     // Auto-select first session
@@ -87,6 +109,7 @@
   function removeSessionFromUI(sessionId: string) {
     sessions = sessions.filter((s) => s.sessionId !== sessionId);
     sessionUIStates.delete(sessionId);
+    clearDraft(sessionId);
     if (activeSessionId === sessionId) {
       if (sessions.length > 0) {
         activeSessionId = sessions[0].sessionId;
@@ -193,6 +216,7 @@
         body: JSON.stringify({ feedback }),
       },
     );
+    clearDraft(activeSessionId);
     submitting = false;
   }
 </script>
