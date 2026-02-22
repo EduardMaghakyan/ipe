@@ -2,6 +2,10 @@
 
 Review Claude Code plans in a browser UI with inline comments, like a GitHub PR review.
 
+## Demo
+https://github.com/user-attachments/assets/80e8f75b-1d00-4be8-a695-e611445ae6c2
+
+
 ## Features
 
 - **GitHub-style code review** — inline comments on any block or text selection, approve or request changes
