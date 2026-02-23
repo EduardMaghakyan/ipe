@@ -265,8 +265,8 @@
   />
 {/if}
 
-<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-<div class="plan-viewer" onclick={handleFileRefClick}>
+<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
+<div class="plan-viewer" role="presentation" onclick={handleFileRefClick}>
   {#each blocks as block (block.id)}
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
