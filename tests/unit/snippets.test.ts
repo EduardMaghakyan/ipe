@@ -106,11 +106,11 @@ describe("resolveSnippets", () => {
     expect(snippets[0].error).toBeUndefined();
   });
 
-  test("truncates large files", async () => {
+  test("returns large files in full without truncation", async () => {
     const snippets = await resolveSnippets("Check `src/large.ts`", tmpDir);
     expect(snippets).toHaveLength(1);
-    expect(snippets[0].error).toContain("truncated");
-    expect(snippets[0].content.split("\n").length).toBe(200);
+    expect(snippets[0].error).toBeUndefined();
+    expect(snippets[0].content.split("\n").length).toBe(300);
   });
 
   test("extracts line range with context", async () => {

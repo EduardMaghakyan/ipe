@@ -86,7 +86,6 @@ export function extractFileRefs(markdown: string): Array<{
 }
 
 const CONTEXT_LINES = 5;
-const MAX_FILE_LINES = 200;
 const FILE_READ_TIMEOUT = 5000;
 
 export async function resolveSnippets(
@@ -143,16 +142,10 @@ export async function resolveSnippets(
           endLine: end,
           content: lines.slice(start - 1, end).join("\n"),
         });
-      } else if (lines.length <= MAX_FILE_LINES) {
-        snippets.push({
-          path: ref.path,
-          content: text,
-        });
       } else {
         snippets.push({
           path: ref.path,
-          content: lines.slice(0, MAX_FILE_LINES).join("\n"),
-          error: `File truncated (${lines.length} lines total)`,
+          content: text,
         });
       }
     } catch (err) {
