@@ -1,4 +1,4 @@
-# IPE — Interactive Plan Editor
+# IPE
 
 Review Claude Code plans in a browser UI with inline comments, like a GitHub PR review.
 
