@@ -6,6 +6,7 @@ import { openBrowser } from "../../../packages/server/browser.ts";
 import { loadHistory, saveVersion } from "../../../packages/server/history.ts";
 import { checkForUpdate } from "../../../packages/server/update.ts";
 import { resolveSnippets } from "../../../packages/server/snippets.ts";
+import { readPlanFromDisk } from "../../../packages/server/plan-file.ts";
 
 const VERSION = "dev";
 const DEFAULT_PORT = 19450;
@@ -19,6 +20,7 @@ interface HookInput {
   session_id?: string;
   permission_mode?: string;
   cwd?: string;
+  transcript_path?: string;
   [key: string]: unknown;
 }
 
@@ -222,14 +224,19 @@ async function main() {
     process.exit(1);
   }
 
-  const plan = input.tool_input?.plan || "";
+  const plan =
+    input.tool_input?.plan || readPlanFromDisk(input.transcript_path);
   const permissionMode = input.permission_mode || "default";
   const sessionId = input.session_id || `anon-${Date.now()}`;
 
   console.error(`IPE: session=${sessionId} permissionMode=${permissionMode}`);
 
   if (!plan) {
-    console.error("No plan found in stdin input");
+    console.error("No plan found in stdin input or on disk");
+    outputDecision(
+      "deny",
+      "IPE could not find a plan. Ensure ~/.claude/plans/ contains a plan file.",
+    );
     process.exit(1);
   }
 
