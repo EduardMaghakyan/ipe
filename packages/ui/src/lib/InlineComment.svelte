@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { Annotation } from "../types";
+  import type { LineAnnotation } from "../types";
   import { truncateText } from "../utils/diff";
 
   interface Props {
-    annotation: Annotation;
+    annotation: LineAnnotation;
     editing: boolean;
     onSave: (id: string, comment: string) => void;
     onCancel: (id: string) => void;

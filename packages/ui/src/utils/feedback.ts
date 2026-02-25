@@ -1,8 +1,8 @@
-import type { Annotation } from "../types";
+import type { LineAnnotation } from "../types";
 import { truncateText } from "./diff";
 
 export function formatFeedback(
-  annotations: Annotation[],
+  annotations: LineAnnotation[],
   generalComment?: string,
 ): string {
   const parts: string[] = [];
@@ -20,8 +20,12 @@ export function formatFeedback(
       if (ann.selectedText) {
         const truncated = truncateText(ann.selectedText, 100);
         parts.push(`## ${i + 1}. Feedback on: "${truncated}"`);
+      } else if (ann.startLine === ann.endLine) {
+        parts.push(`## ${i + 1}. Comment on line ${ann.startLine}`);
       } else {
-        parts.push(`## ${i + 1}. Comment on block`);
+        parts.push(
+          `## ${i + 1}. Comment on lines ${ann.startLine}-${ann.endLine}`,
+        );
       }
       parts.push(`> ${ann.comment}`);
     }

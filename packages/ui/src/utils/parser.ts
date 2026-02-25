@@ -17,6 +17,7 @@ export function parseMarkdown(markdown: string): Block[] {
 
     // Fenced code block
     if (line.trimStart().startsWith("```")) {
+      const startLine = i + 1; // 1-based
       const codeLines = [line];
       i++;
       while (i < lines.length && !lines[i].trimStart().startsWith("```")) {
@@ -33,17 +34,22 @@ export function parseMarkdown(markdown: string): Block[] {
         type: "code",
         content: raw,
         raw,
+        startLine,
+        endLine: i, // i is now past the closing fence
       });
       continue;
     }
 
     // Heading
     if (/^#{1,6}\s/.test(line)) {
+      const lineNum = i + 1;
       blocks.push({
         id: `block-${blockIndex++}`,
         type: "heading",
         content: line,
         raw: line,
+        startLine: lineNum,
+        endLine: lineNum,
       });
       i++;
       continue;
@@ -51,6 +57,7 @@ export function parseMarkdown(markdown: string): Block[] {
 
     // Blockquote
     if (line.startsWith(">")) {
+      const startLine = i + 1;
       const quoteLines = [line];
       i++;
       while (i < lines.length && lines[i].startsWith(">")) {
@@ -63,6 +70,8 @@ export function parseMarkdown(markdown: string): Block[] {
         type: "blockquote",
         content: raw,
         raw,
+        startLine,
+        endLine: i, // i is now past the last quote line
       });
       continue;
     }
@@ -70,6 +79,7 @@ export function parseMarkdown(markdown: string): Block[] {
     // List (unordered or ordered) — one block per item, with position tracking
     if (/^(\s*[-*+]|\s*\d+\.)\s/.test(line)) {
       let itemLines = [line];
+      let itemStartLine = i + 1;
       let listPosition = 1;
       i++;
       while (i < lines.length) {
@@ -82,9 +92,12 @@ export function parseMarkdown(markdown: string): Block[] {
             content: raw,
             raw,
             listStart: listPosition,
+            startLine: itemStartLine,
+            endLine: i, // exclusive of next item
           });
           listPosition++;
           itemLines = [lines[i]];
+          itemStartLine = i + 1;
           i++;
         } else if (lines[i].startsWith("  ") && lines[i].trim() !== "") {
           // Continuation line — append to current item
@@ -102,6 +115,8 @@ export function parseMarkdown(markdown: string): Block[] {
         content: raw,
         raw,
         listStart: listPosition,
+        startLine: itemStartLine,
+        endLine: itemStartLine + itemLines.length - 1,
       });
       continue;
     }
@@ -112,6 +127,7 @@ export function parseMarkdown(markdown: string): Block[] {
       i + 1 < lines.length &&
       /\|[\s-:]+\|/.test(lines[i + 1])
     ) {
+      const startLine = i + 1;
       const tableLines = [line];
       i++;
       while (i < lines.length && lines[i].includes("|")) {
@@ -124,11 +140,14 @@ export function parseMarkdown(markdown: string): Block[] {
         type: "table",
         content: raw,
         raw,
+        startLine,
+        endLine: startLine + tableLines.length - 1,
       });
       continue;
     }
 
     // Paragraph (collect consecutive non-empty lines)
+    const startLine = i + 1;
     const paraLines = [line];
     i++;
     while (
@@ -153,6 +172,8 @@ export function parseMarkdown(markdown: string): Block[] {
       type: "paragraph",
       content: raw,
       raw,
+      startLine,
+      endLine: startLine + paraLines.length - 1,
     });
   }
 

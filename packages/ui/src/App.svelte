@@ -1,6 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import type { Annotation, Block, PlanVersion, SessionSummary } from "./types";
+  import type {
+    LineAnnotation,
+    Block,
+    PlanVersion,
+    SessionSummary,
+  } from "./types";
   import { parseMarkdown } from "./utils/parser";
   import { formatFeedback } from "./utils/feedback";
   import Toolbar from "./lib/Toolbar.svelte";
@@ -8,7 +13,7 @@
   import DiffOverlay from "./lib/DiffOverlay.svelte";
 
   interface SessionUIState {
-    annotations: Annotation[];
+    annotations: LineAnnotation[];
     generalComment: string;
     blocks: Block[];
   }
@@ -20,7 +25,7 @@
 
   // Active session's direct state (for reactivity — same pattern as original code)
   let blocks = $state<Block[]>([]);
-  let annotations = $state<Annotation[]>([]);
+  let annotations = $state<LineAnnotation[]>([]);
   let generalComment = $state("");
 
   let version = $state("");
@@ -49,7 +54,11 @@
     theme = theme === "dark" ? "light" : "dark";
   }
 
-  function saveDraft(sessionId: string, ann: Annotation[], comment: string) {
+  function saveDraft(
+    sessionId: string,
+    ann: LineAnnotation[],
+    comment: string,
+  ) {
     localStorage.setItem(
       `ipe-draft-${sessionId}`,
       JSON.stringify({ annotations: ann, generalComment: comment }),
@@ -58,7 +67,7 @@
 
   function loadDraft(
     sessionId: string,
-  ): { annotations: Annotation[]; generalComment: string } | null {
+  ): { annotations: LineAnnotation[]; generalComment: string } | null {
     const raw = localStorage.getItem(`ipe-draft-${sessionId}`);
     if (!raw) return null;
     try {
@@ -203,7 +212,7 @@
     return counts;
   });
 
-  function addAnnotation(annotation: Annotation) {
+  function addAnnotation(annotation: LineAnnotation) {
     annotations = [...annotations, annotation];
   }
 

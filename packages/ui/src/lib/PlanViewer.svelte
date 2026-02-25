@@ -1,16 +1,15 @@
 <script lang="ts">
-  import type { Annotation, Block, FileSnippet } from "../types";
+  import type { LineAnnotation, Block, FileSnippet } from "../types";
   import { isDiffContent, escapeHtml } from "../utils/diff";
-  import SelectionPopup from "./SelectionPopup.svelte";
   import InlineComment from "./InlineComment.svelte";
   import FileSnippetPanel from "./FileSnippetPanel.svelte";
 
   interface Props {
     blocks: Block[];
-    annotations: Annotation[];
+    annotations: LineAnnotation[];
     fileSnippets?: FileSnippet[];
     theme: "dark" | "light";
-    onAddAnnotation: (a: Annotation) => void;
+    onAddAnnotation: (a: LineAnnotation) => void;
     onRemoveAnnotation: (id: string) => void;
     onUpdateAnnotation: (id: string, comment: string) => void;
   }
@@ -25,14 +24,10 @@
     onUpdateAnnotation,
   }: Props = $props();
 
-  let popup = $state<{
-    x: number;
-    y: number;
-    blockId: string;
-    text: string;
-  } | null>(null);
   let editingId = $state<string | null>(null);
   let activeSnippet = $state<FileSnippet | null>(null);
+  let hoveredLine = $state<number | null>(null);
+  let selectionAnchor = $state<number | null>(null);
 
   // Build a lookup map from file paths to snippets
   let snippetMap = $derived.by(() => {
@@ -41,6 +36,17 @@
       map.set(s.path, s);
     }
     return map;
+  });
+
+  // Set of all highlighted line numbers (from annotations)
+  let highlightedLines = $derived.by(() => {
+    const set = new Set<number>();
+    for (const ann of annotations) {
+      for (let l = ann.startLine; l <= ann.endLine; l++) {
+        set.add(l);
+      }
+    }
+    return set;
   });
 
   function handleFileRefClick(e: MouseEvent) {
@@ -56,47 +62,61 @@
     e.stopPropagation();
   }
 
-  function handleMouseUp(blockId: string) {
-    const sel = window.getSelection();
-    const text = sel?.toString().trim();
-    if (!sel || sel.isCollapsed || !text) {
-      popup = null;
-      return;
+  function handleDocumentClick(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    if (
+      !target.closest(".file-snippet-panel") &&
+      !target.closest("[data-file-path]")
+    ) {
+      activeSnippet = null;
     }
-    const range = sel.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-    popup = {
-      x: rect.left + rect.width / 2,
-      y: rect.top,
-      blockId,
-      text,
-    };
   }
 
-  function handleAddComment() {
-    if (!popup) return;
-    const id = `ann-${Date.now()}`;
-    onAddAnnotation({
-      id,
-      blockId: popup.blockId,
-      selectedText: popup.text,
-      comment: "",
-    });
-    editingId = id;
-    popup = null;
-    window.getSelection()?.removeAllRanges();
+  function handlePlusClick(e: MouseEvent, lineNum: number) {
+    if (e.shiftKey && selectionAnchor !== null) {
+      // Range selection
+      const start = Math.min(selectionAnchor, lineNum);
+      const end = Math.max(selectionAnchor, lineNum);
+      const rawLines = getRawLinesInRange(start, end);
+      const id = `ann-${Date.now()}`;
+      onAddAnnotation({
+        id,
+        startLine: start,
+        endLine: end,
+        selectedText: rawLines,
+        comment: "",
+      });
+      editingId = id;
+      selectionAnchor = null;
+    } else {
+      // Single line
+      const rawLines = getRawLinesInRange(lineNum, lineNum);
+      const id = `ann-${Date.now()}`;
+      onAddAnnotation({
+        id,
+        startLine: lineNum,
+        endLine: lineNum,
+        selectedText: rawLines,
+        comment: "",
+      });
+      editingId = id;
+      selectionAnchor = lineNum;
+    }
   }
 
-  function handlePlusClick(blockId: string) {
-    const block = blocks.find((b) => b.id === blockId);
-    const id = `ann-${Date.now()}`;
-    onAddAnnotation({
-      id,
-      blockId,
-      selectedText: block?.content ?? "",
-      comment: "",
-    });
-    editingId = id;
+  function getRawLinesInRange(start: number, end: number): string {
+    const result: string[] = [];
+    for (const block of blocks) {
+      if (block.endLine < start || block.startLine > end) continue;
+      const blockLines = block.raw.split("\n");
+      for (let i = 0; i < blockLines.length; i++) {
+        const lineNum = block.startLine + i;
+        if (lineNum >= start && lineNum <= end) {
+          result.push(blockLines[i]);
+        }
+      }
+    }
+    return result.join("\n");
   }
 
   function handleSave(id: string, comment: string) {
@@ -112,36 +132,27 @@
     editingId = null;
   }
 
-  function handleDocumentClick(e: MouseEvent) {
-    const target = e.target as HTMLElement;
-    if (
-      !target.closest(".popup") &&
-      !window.getSelection()?.toString().trim()
-    ) {
-      popup = null;
-    }
-    if (
-      !target.closest(".file-snippet-panel") &&
-      !target.closest("[data-file-path]")
-    ) {
-      activeSnippet = null;
-    }
+  function getAnnotationsEndingAtBlock(block: Block): LineAnnotation[] {
+    return annotations.filter(
+      (a) => a.endLine >= block.startLine && a.endLine <= block.endLine,
+    );
   }
 
-  function getBlockAnnotations(blockId: string): Annotation[] {
-    return annotations.filter((a) => a.blockId === blockId);
+  function isLineHighlighted(lineNum: number): boolean {
+    return highlightedLines.has(lineNum);
   }
 
-  function hasAnnotation(blockId: string): boolean {
-    return annotations.some((a) => a.blockId === blockId);
+  function getLineCount(block: Block): number {
+    return block.endLine - block.startLine + 1;
   }
+
+  // --- Rendering functions ---
 
   function renderInlineMarkdown(text: string): string {
     return escapeHtml(text)
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>")
       .replace(/`(.+?)`/g, (_match, code: string) => {
-        // Strip line ref suffix to check against snippet map
         const pathPart = code.replace(/:.*$/, "");
         if (snippetMap.has(pathPart)) {
           return `<code class="inline-code file-ref" data-file-path="${escapeHtml(pathPart)}">${code}</code>`;
@@ -196,7 +207,8 @@
       return `<li>${renderInlineMarkdown(text)}</li>`;
     });
     const tag = isOrdered ? "ol" : "ul";
-    const startAttr = isOrdered && block.listStart ? ` start="${block.listStart}"` : "";
+    const startAttr =
+      isOrdered && block.listStart ? ` start="${block.listStart}"` : "";
     return `<${tag}${startAttr}>${items.join("")}</${tag}>`;
   }
 
@@ -253,10 +265,6 @@
 
 <svelte:document onclick={handleDocumentClick} />
 
-{#if popup}
-  <SelectionPopup x={popup.x} y={popup.y} onAddComment={handleAddComment} />
-{/if}
-
 {#if activeSnippet}
   <FileSnippetPanel
     snippet={activeSnippet}
@@ -268,29 +276,56 @@
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
 <div class="plan-viewer" role="presentation" onclick={handleFileRefClick}>
   {#each blocks as block (block.id)}
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div
-      class="block {block.type}"
-      class:annotated={hasAnnotation(block.id)}
-      role="region"
-      onmouseup={() => handleMouseUp(block.id)}
-    >
-      <button
-        class="add-comment-btn"
-        onclick={() => handlePlusClick(block.id)}
-        aria-label="Add comment to block">+</button
+    <div class="block-row {block.type}">
+      <div class="gutter" role="presentation">
+        {#each { length: getLineCount(block) } as _, idx}
+          {@const lineNum = block.startLine + idx}
+          <div
+            class="gutter-line"
+            class:highlighted={isLineHighlighted(lineNum)}
+          >
+            <span class="line-number">{lineNum}</span>
+          </div>
+        {/each}
+      </div>
+      <div class="btn-col" role="presentation">
+        {#each { length: getLineCount(block) } as _, idx}
+          {@const lineNum = block.startLine + idx}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="btn-line"
+            onmouseenter={() => (hoveredLine = lineNum)}
+            onmouseleave={() => {
+              if (hoveredLine === lineNum) hoveredLine = null;
+            }}
+          >
+            <button
+              class="add-comment-btn"
+              class:visible={hoveredLine === lineNum}
+              onclick={(e) => handlePlusClick(e, lineNum)}
+              aria-label="Add comment to line {lineNum}">+</button
+            >
+          </div>
+        {/each}
+      </div>
+      <div
+        class="content"
+        class:has-annotation={getAnnotationsEndingAtBlock(block).length > 0}
       >
-      {@html renderBlock(block)}
+        {@html renderBlock(block)}
+      </div>
     </div>
-    {#each getBlockAnnotations(block.id) as ann (ann.id)}
-      <InlineComment
-        annotation={ann}
-        editing={editingId === ann.id}
-        onSave={handleSave}
-        onCancel={handleCancel}
-        onDelete={onRemoveAnnotation}
-        onEdit={(id) => (editingId = id)}
-      />
+    {#each getAnnotationsEndingAtBlock(block) as ann (ann.id)}
+      <div class="comment-wrapper">
+        <InlineComment
+          annotation={ann}
+          editing={editingId === ann.id}
+          onSave={handleSave}
+          onCancel={handleCancel}
+          onDelete={onRemoveAnnotation}
+          onEdit={(id) => (editingId = id)}
+        />
+      </div>
     {/each}
   {/each}
 </div>
@@ -299,40 +334,63 @@
   .plan-viewer {
     font-size: 0.95rem;
   }
-  .block {
-    position: relative;
-    padding: 2px 4px 2px 4px;
-    border-radius: 4px;
-    border-left: 3px solid transparent;
-    transition:
-      border-color 0.15s,
-      background 0.15s;
+
+  .block-row {
+    display: grid;
+    grid-template-columns: 40px 28px 1fr;
+    gap: 0;
   }
-  /* Extend hover hit area into the left gutter */
-  .block::before {
-    content: "";
-    position: absolute;
-    left: -32px;
-    top: 0;
-    width: 32px;
-    height: 100%;
+
+  .gutter {
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+    border-right: 1px solid var(--color-border-muted);
   }
-  .block.annotated {
-    border-left-color: var(--color-annotated-border);
+
+  .gutter-line {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 8px 0 4px;
+    min-height: 1.6em;
+  }
+
+  .gutter-line.highlighted {
     background: var(--color-annotated-bg);
   }
+
+  .line-number {
+    font-family:
+      "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    opacity: 0.5;
+    text-align: right;
+    line-height: 1.6;
+  }
+
+  .btn-col {
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+  }
+
+  .btn-line {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.6em;
+  }
+
   .add-comment-btn {
-    position: absolute;
-    left: -28px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     border: 1px solid var(--color-border);
     background: var(--color-bg-subtle);
     color: var(--color-accent);
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     line-height: 1;
     cursor: pointer;
@@ -346,44 +404,79 @@
       background 0.1s,
       color 0.1s,
       border-color 0.1s;
-    z-index: 10;
+    flex-shrink: 0;
   }
-  .block:hover .add-comment-btn {
+
+  .add-comment-btn.visible {
     opacity: 1;
   }
+
   .add-comment-btn:hover {
     background: var(--color-accent);
     border-color: var(--color-accent);
     color: #fff;
   }
-  .block :global(h1) {
+
+  .content {
+    padding: 0 8px;
+    min-width: 0;
+  }
+
+  /* Align gutter line numbers with content for each block type */
+  .block-row.heading .gutter,
+  .block-row.heading .btn-col {
+    padding-top: 20px;
+  }
+  .block-row.paragraph .gutter,
+  .block-row.paragraph .btn-col {
+    padding-top: 8px;
+  }
+  .block-row.code .gutter,
+  .block-row.code .btn-col {
+    padding-top: 28px;
+  }
+  .block-row.blockquote .gutter,
+  .block-row.blockquote .btn-col {
+    padding-top: 8px;
+  }
+  .block-row.table .gutter,
+  .block-row.table .btn-col {
+    padding-top: 12px;
+  }
+
+  /* Heading styles */
+  .block-row :global(h1) {
     font-size: 1.75rem;
     margin: 24px 0 12px;
     color: var(--color-text-emphasis);
     border-bottom: 1px solid var(--color-border-muted);
     padding-bottom: 8px;
   }
-  .block :global(h2) {
+  .block-row :global(h2) {
     font-size: 1.4rem;
     margin: 20px 0 10px;
     color: var(--color-text-emphasis);
   }
-  .block :global(h3) {
+  .block-row :global(h3) {
     font-size: 1.15rem;
     margin: 16px 0 8px;
     color: var(--color-text-emphasis);
   }
-  .block :global(h4),
-  .block :global(h5),
-  .block :global(h6) {
+  .block-row :global(h4),
+  .block-row :global(h5),
+  .block-row :global(h6) {
     font-size: 1rem;
     margin: 12px 0 6px;
     color: var(--color-text-emphasis);
   }
-  .block :global(p) {
+
+  /* Paragraph */
+  .block-row :global(p) {
     margin: 8px 0;
   }
-  .block :global(pre) {
+
+  /* Code */
+  .block-row :global(pre) {
     background: var(--color-bg-subtle);
     border: 1px solid var(--color-border);
     border-radius: 6px;
@@ -391,95 +484,111 @@
     overflow-x: auto;
     margin: 12px 0;
   }
-  .block :global(code) {
+  .block-row :global(code) {
     font-family:
       "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
     font-size: 0.85rem;
   }
-  .block :global(.inline-code) {
+  .block-row :global(.inline-code) {
     background: var(--color-bg-inset);
     padding: 2px 6px;
     border-radius: 3px;
     font-size: 0.85em;
   }
-  .block :global(.file-ref) {
+  .block-row :global(.file-ref) {
     cursor: pointer;
     border-bottom: 1px dashed var(--color-link);
     color: var(--color-link);
     transition: background 0.1s;
   }
-  .block :global(.file-ref:hover) {
+  .block-row :global(.file-ref:hover) {
     background: rgba(88, 166, 255, 0.1);
   }
-  .block.list {
+
+  /* List */
+  .block-row.list .content {
     padding-top: 0;
     padding-bottom: 0;
   }
-  .block :global(ul),
-  .block :global(ol) {
+  .block-row :global(ul),
+  .block-row :global(ol) {
     padding-left: 24px;
     margin: 0;
   }
-  .block :global(li) {
+  .block-row :global(li) {
     margin: 2px 0;
   }
-  .block :global(blockquote) {
+
+  /* Blockquote */
+  .block-row :global(blockquote) {
     border-left: 3px solid var(--color-border);
     padding: 4px 16px;
     color: var(--color-text-muted);
     margin: 8px 0;
   }
-  .block :global(table) {
+
+  /* Table */
+  .block-row :global(table) {
     width: 100%;
     border-collapse: collapse;
     margin: 12px 0;
   }
-  .block :global(th),
-  .block :global(td) {
+  .block-row :global(th),
+  .block-row :global(td) {
     border: 1px solid var(--color-border);
     padding: 8px 12px;
     text-align: left;
   }
-  .block :global(th) {
+  .block-row :global(th) {
     background: var(--color-bg-subtle);
     font-weight: 600;
   }
-  .block :global(.diff-block) {
+
+  /* Diff */
+  .block-row :global(.diff-block) {
     padding: 0;
   }
-  .block :global(.diff-block code) {
+  .block-row :global(.diff-block code) {
     display: block;
     padding: 16px;
   }
-  .block :global(.diff-add) {
+  .block-row :global(.diff-add) {
     display: inline-block;
     width: 100%;
     background: var(--color-diff-add-bg);
     color: var(--color-diff-add-text);
   }
-  .block :global(.diff-remove) {
+  .block-row :global(.diff-remove) {
     display: inline-block;
     width: 100%;
     background: var(--color-diff-remove-bg);
     color: var(--color-diff-remove-text);
   }
-  .block :global(.diff-hunk) {
+  .block-row :global(.diff-hunk) {
     display: inline-block;
     width: 100%;
     color: var(--color-diff-hunk);
   }
-  .block :global(.diff-context) {
+  .block-row :global(.diff-context) {
     display: inline-block;
     width: 100%;
   }
-  .block :global(a) {
+
+  /* Links & emphasis */
+  .block-row :global(a) {
     color: var(--color-link);
     text-decoration: none;
   }
-  .block :global(a:hover) {
+  .block-row :global(a:hover) {
     text-decoration: underline;
   }
-  .block :global(strong) {
+  .block-row :global(strong) {
     color: var(--color-text-emphasis);
+  }
+
+  /* Comment wrapper — full width below block row */
+  .comment-wrapper {
+    margin-left: 68px;
+    padding: 0 8px;
   }
 </style>

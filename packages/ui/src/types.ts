@@ -5,12 +5,22 @@ export interface Annotation {
   comment: string;
 }
 
+export interface LineAnnotation {
+  id: string;
+  startLine: number;
+  endLine: number;
+  selectedText: string;
+  comment: string;
+}
+
 export interface Block {
   id: string;
   type: "heading" | "paragraph" | "code" | "list" | "table" | "blockquote";
   content: string;
   raw: string;
   listStart?: number;
+  startLine: number;
+  endLine: number;
 }
 
 export interface SessionSummary {
