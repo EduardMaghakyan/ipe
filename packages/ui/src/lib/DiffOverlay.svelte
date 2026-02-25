@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PlanVersion } from "../types";
-  import { computeDiff } from "../utils/diff";
+  import { computeDiff, collapseDiffContext } from "../utils/diff";
+  import type { CollapsedDiffItem } from "../utils/diff";
 
   interface SideBySideLine {
     left: { content: string; type: "remove" | "context" | "blank" };
@@ -36,33 +37,39 @@
     rightIdx = allVersions.length - 1;
   });
 
-  let diffLines = $derived.by(() => {
+  let rawDiffLines = $derived.by(() => {
     const oldPlan = allVersions[leftIdx]?.plan ?? "";
     const newPlan = allVersions[rightIdx]?.plan ?? "";
     return computeDiff(oldPlan, newPlan);
   });
 
-  let sideBySideLines = $derived.by(() => {
-    const lines: SideBySideLine[] = [];
-    for (const line of diffLines) {
-      if (line.type === "context") {
-        lines.push({
-          left: { content: line.content, type: "context" },
-          right: { content: line.content, type: "context" },
+  let collapsedLines = $derived(collapseDiffContext(rawDiffLines));
+
+  type SideBySideItem = SideBySideLine | { type: "fold"; count: number };
+
+  let sideBySideItems = $derived.by(() => {
+    const items: SideBySideItem[] = [];
+    for (const item of collapsedLines) {
+      if (item.type === "fold") {
+        items.push(item);
+      } else if (item.type === "context") {
+        items.push({
+          left: { content: item.content, type: "context" },
+          right: { content: item.content, type: "context" },
         });
-      } else if (line.type === "remove") {
-        lines.push({
-          left: { content: line.content, type: "remove" },
+      } else if (item.type === "remove") {
+        items.push({
+          left: { content: item.content, type: "remove" },
           right: { content: "", type: "blank" },
         });
       } else {
-        lines.push({
+        items.push({
           left: { content: "", type: "blank" },
-          right: { content: line.content, type: "add" },
+          right: { content: item.content, type: "add" },
         });
       }
     }
-    return lines;
+    return items;
   });
 
   function formatLabel(v: PlanVersion, idx: number): string {
@@ -124,15 +131,18 @@
   {#if viewMode === "inline"}
     <div class="diff-content">
       <pre><code
-          >{#each diffLines as line}<span
-              class="diff-line {diffClass[line.type]}"
-              >{line.type === "add"
-                ? "+"
-                : line.type === "remove"
-                  ? "-"
-                  : " "} {line.content}</span
-            >
-          {/each}</code
+          >{#each collapsedLines as item}{#if item.type === "fold"}<span
+                class="diff-line diff-fold"
+                >{"⋯"} {item.count} hidden lines</span
+              >
+            {:else}<span class="diff-line {diffClass[item.type]}"
+                >{item.type === "add"
+                  ? "+"
+                  : item.type === "remove"
+                    ? "-"
+                    : " "} {item.content}</span
+              >
+            {/if}{/each}</code
         ></pre>
     </div>
   {:else}
@@ -143,11 +153,14 @@
         onscroll={() => syncScroll(leftPanel!, rightPanel)}
       >
         <pre><code
-            >{#each sideBySideLines as row}<span
-                class="diff-line {diffClass[row.left.type]}"
-                >{row.left.content}</span
-              >
-            {/each}</code
+            >{#each sideBySideItems as item}{#if "count" in item}<span
+                  class="diff-line diff-fold"
+                  >{"⋯"} {item.count} hidden lines</span
+                >
+              {:else}<span class="diff-line {diffClass[item.left.type]}"
+                  >{item.left.content}</span
+                >
+              {/if}{/each}</code
           ></pre>
       </div>
       <div
@@ -156,11 +169,14 @@
         onscroll={() => syncScroll(rightPanel!, leftPanel)}
       >
         <pre><code
-            >{#each sideBySideLines as row}<span
-                class="diff-line {diffClass[row.right.type]}"
-                >{row.right.content}</span
-              >
-            {/each}</code
+            >{#each sideBySideItems as item}{#if "count" in item}<span
+                  class="diff-line diff-fold"
+                  >{"⋯"} {item.count} hidden lines</span
+                >
+              {:else}<span class="diff-line {diffClass[item.right.type]}"
+                  >{item.right.content}</span
+                >
+              {/if}{/each}</code
           ></pre>
       </div>
     </div>
@@ -279,6 +295,14 @@
   }
   .diff-blank {
     background: var(--color-bg-inset);
+  }
+  .diff-fold {
+    background: var(--color-bg-subtle);
+    color: var(--color-text-muted);
+    font-style: italic;
+    text-align: center;
+    border-top: 1px solid var(--color-border-muted);
+    border-bottom: 1px solid var(--color-border-muted);
   }
   .side-by-side {
     flex: 1;

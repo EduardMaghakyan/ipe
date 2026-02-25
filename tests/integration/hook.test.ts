@@ -223,9 +223,7 @@ describe("hook reads plan from disk when tool_input is empty", () => {
     await waitForServer(proc.stderr as ReadableStream);
 
     // Verify server started and plan was loaded
-    const sessionsRes = await fetch(
-      `http://localhost:${port}/api/sessions`,
-    );
+    const sessionsRes = await fetch(`http://localhost:${port}/api/sessions`);
     expect(sessionsRes.status).toBe(200);
     const sessions = (await sessionsRes.json()) as {
       sessionId: string;
@@ -279,9 +277,7 @@ describe("hook reads plan from disk when tool_input is empty", () => {
 
     await waitForServer(proc.stderr as ReadableStream);
 
-    const sessionsRes = await fetch(
-      `http://localhost:${port}/api/sessions`,
-    );
+    const sessionsRes = await fetch(`http://localhost:${port}/api/sessions`);
     expect(sessionsRes.status).toBe(200);
     const sessions = (await sessionsRes.json()) as {
       sessionId: string;

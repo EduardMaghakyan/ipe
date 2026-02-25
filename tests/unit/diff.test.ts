@@ -1,5 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { isDiffContent, computeDiff } from "../../packages/ui/src/utils/diff";
+import {
+  isDiffContent,
+  computeDiff,
+  collapseDiffContext,
+} from "../../packages/ui/src/utils/diff";
+import type { DiffLine } from "../../packages/ui/src/utils/diff";
 
 describe("isDiffContent", () => {
   test("returns true for diff language tag", () => {
@@ -101,5 +106,98 @@ describe("computeDiff", () => {
     expect(adds.length).toBeGreaterThan(0);
     expect(removes.length).toBeGreaterThan(0);
     expect(adds.some((l) => l.content.includes("Step 3"))).toBe(true);
+  });
+});
+
+describe("collapseDiffContext", () => {
+  function ctx(content: string): DiffLine {
+    return { type: "context", content };
+  }
+  function add(content: string): DiffLine {
+    return { type: "add", content };
+  }
+  function rem(content: string): DiffLine {
+    return { type: "remove", content };
+  }
+
+  test("all context lines returns a single fold", () => {
+    const lines: DiffLine[] = Array.from({ length: 30 }, (_, i) =>
+      ctx(`line ${i}`),
+    );
+    const result = collapseDiffContext(lines);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("fold");
+    if (result[0].type === "fold") {
+      expect(result[0].count).toBe(30);
+    }
+  });
+
+  test("all changed lines returns all lines, no folds", () => {
+    const lines: DiffLine[] = [add("a"), rem("b"), add("c")];
+    const result = collapseDiffContext(lines);
+    expect(result).toHaveLength(3);
+    expect(result.every((r) => r.type !== "fold")).toBe(true);
+  });
+
+  test("change in the middle keeps ±10 context and folds the rest", () => {
+    // 25 context + 1 add + 25 context = 51 lines
+    const lines: DiffLine[] = [
+      ...Array.from({ length: 25 }, (_, i) => ctx(`before ${i}`)),
+      add("changed"),
+      ...Array.from({ length: 25 }, (_, i) => ctx(`after ${i}`)),
+    ];
+    const result = collapseDiffContext(lines);
+    // Should have: fold(15) + 10 ctx + 1 add + 10 ctx + fold(15)
+    const folds = result.filter((r) => r.type === "fold");
+    expect(folds).toHaveLength(2);
+    if (folds[0].type === "fold") expect(folds[0].count).toBe(15);
+    if (folds[1].type === "fold") expect(folds[1].count).toBe(15);
+    // Total kept lines = 10 + 1 + 10 = 21
+    const kept = result.filter((r) => r.type !== "fold");
+    expect(kept).toHaveLength(21);
+  });
+
+  test("change at start clips context window to boundary", () => {
+    const lines: DiffLine[] = [
+      add("first"),
+      ...Array.from({ length: 25 }, (_, i) => ctx(`after ${i}`)),
+    ];
+    const result = collapseDiffContext(lines);
+    // 1 add + 10 ctx kept + fold(15)
+    const folds = result.filter((r) => r.type === "fold");
+    expect(folds).toHaveLength(1);
+    if (folds[0].type === "fold") expect(folds[0].count).toBe(15);
+  });
+
+  test("custom context size", () => {
+    const lines: DiffLine[] = [
+      ...Array.from({ length: 10 }, (_, i) => ctx(`before ${i}`)),
+      add("changed"),
+      ...Array.from({ length: 10 }, (_, i) => ctx(`after ${i}`)),
+    ];
+    const result = collapseDiffContext(lines, 2);
+    // fold(8) + 2 ctx + 1 add + 2 ctx + fold(8)
+    const folds = result.filter((r) => r.type === "fold");
+    expect(folds).toHaveLength(2);
+    if (folds[0].type === "fold") expect(folds[0].count).toBe(8);
+    if (folds[1].type === "fold") expect(folds[1].count).toBe(8);
+    const kept = result.filter((r) => r.type !== "fold");
+    expect(kept).toHaveLength(5);
+  });
+
+  test("adjacent changes within context window produce no fold between them", () => {
+    const lines: DiffLine[] = [
+      add("first change"),
+      ...Array.from({ length: 5 }, (_, i) => ctx(`between ${i}`)),
+      add("second change"),
+    ];
+    const result = collapseDiffContext(lines);
+    // All lines are within ±10 of a change, no folds
+    expect(result.every((r) => r.type !== "fold")).toBe(true);
+    expect(result).toHaveLength(7);
+  });
+
+  test("empty input returns empty", () => {
+    expect(collapseDiffContext([])).toEqual([]);
   });
 });

@@ -67,3 +67,47 @@ export function computeDiff(oldText: string, newText: string): DiffLine[] {
 
   return result.reverse();
 }
+
+export type CollapsedDiffItem = DiffLine | { type: "fold"; count: number };
+
+export function collapseDiffContext(
+  lines: DiffLine[],
+  context: number = 10,
+): CollapsedDiffItem[] {
+  // Find indices of changed lines
+  const changed = new Set<number>();
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].type !== "context") changed.add(i);
+  }
+
+  // Mark which lines to keep (within ±context of a change)
+  const keep = new Set<number>();
+  for (const idx of changed) {
+    for (
+      let j = Math.max(0, idx - context);
+      j <= Math.min(lines.length - 1, idx + context);
+      j++
+    ) {
+      keep.add(j);
+    }
+  }
+
+  const result: CollapsedDiffItem[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (keep.has(i)) {
+      result.push(lines[i]);
+      i++;
+    } else {
+      // Count consecutive hidden lines
+      let count = 0;
+      while (i < lines.length && !keep.has(i)) {
+        count++;
+        i++;
+      }
+      result.push({ type: "fold", count });
+    }
+  }
+
+  return result;
+}

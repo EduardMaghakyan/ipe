@@ -268,7 +268,7 @@ export function decodeWithoutVerification(token: string): JwtPayload | null {
               )
               .replace("## Testing", "## Verification")
               .replace(
-                '> **Important:** All existing endpoints must continue to work during the migration period. We\'ll support both session and JWT auth temporarily.\n\n',
+                "> **Important:** All existing endpoints must continue to work during the migration period. We'll support both session and JWT auth temporarily.\n\n",
                 "",
               )
               .replace('expiresIn: "15m"', 'expiresIn: "30m"'),

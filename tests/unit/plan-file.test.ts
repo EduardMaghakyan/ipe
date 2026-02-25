@@ -77,16 +77,12 @@ afterAll(() => {
 
 describe("slugFromTranscript", () => {
   test("extracts slug from valid JSONL", () => {
-    const slug = slugFromTranscript(
-      join(transcriptsDir, "session1.jsonl"),
-    );
+    const slug = slugFromTranscript(join(transcriptsDir, "session1.jsonl"));
     expect(slug).toBe("my-cool-slug");
   });
 
   test("returns null when no slug field", () => {
-    const slug = slugFromTranscript(
-      join(transcriptsDir, "no-slug.jsonl"),
-    );
+    const slug = slugFromTranscript(join(transcriptsDir, "no-slug.jsonl"));
     expect(slug).toBeNull();
   });
 
@@ -96,16 +92,12 @@ describe("slugFromTranscript", () => {
   });
 
   test("returns null for malformed JSONL", () => {
-    const slug = slugFromTranscript(
-      join(transcriptsDir, "malformed.jsonl"),
-    );
+    const slug = slugFromTranscript(join(transcriptsDir, "malformed.jsonl"));
     expect(slug).toBeNull();
   });
 
   test("finds slug when only some lines have it", () => {
-    const slug = slugFromTranscript(
-      join(transcriptsDir, "partial-slug.jsonl"),
-    );
+    const slug = slugFromTranscript(join(transcriptsDir, "partial-slug.jsonl"));
     expect(slug).toBe("my-cool-slug");
   });
 });

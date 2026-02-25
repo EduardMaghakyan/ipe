@@ -1,5 +1,8 @@
 import { describe, test, expect } from "bun:test";
-import { parseMarkdown } from "../../packages/ui/src/utils/parser";
+import {
+  parseMarkdown,
+  blocksToLines,
+} from "../../packages/ui/src/utils/parser";
 
 describe("parseMarkdown", () => {
   test("empty input returns empty array", () => {
@@ -193,5 +196,95 @@ describe("parseMarkdown", () => {
     expect(blocks[2].endLine).toBe(7);
     expect(blocks[3].startLine).toBe(9); // list
     expect(blocks[3].endLine).toBe(9);
+  });
+});
+
+describe("blocksToLines", () => {
+  test("heading produces a single line", () => {
+    const blocks = parseMarkdown("# Title");
+    const lines = blocksToLines(blocks);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].lineNumber).toBe(1);
+    expect(lines[0].blockType).toBe("heading");
+    expect(lines[0].blockPosition).toBe("only");
+    expect(lines[0].html).toContain("Title");
+  });
+
+  test("blank lines between blocks are included", () => {
+    const blocks = parseMarkdown("# Title\n\nParagraph");
+    const lines = blocksToLines(blocks);
+    expect(lines).toHaveLength(3);
+    expect(lines[0].blockType).toBe("heading");
+    expect(lines[1].isBlank).toBe(true);
+    expect(lines[1].lineNumber).toBe(2);
+    expect(lines[2].blockType).toBe("paragraph");
+    expect(lines[2].lineNumber).toBe(3);
+  });
+
+  test("code block produces fence + content lines", () => {
+    const blocks = parseMarkdown("```js\nconst x = 1;\nconst y = 2;\n```");
+    const lines = blocksToLines(blocks);
+    expect(lines).toHaveLength(4);
+    expect(lines[0].isFence).toBe(true);
+    expect(lines[0].blockPosition).toBe("first");
+    expect(lines[1].blockType).toBe("code");
+    expect(lines[1].html).toContain("const x = 1;");
+    expect(lines[2].html).toContain("const y = 2;");
+    expect(lines[3].isFence).toBe(true);
+    expect(lines[3].blockPosition).toBe("last");
+  });
+
+  test("paragraph lines have correct positions", () => {
+    const blocks = parseMarkdown("First line\nSecond line\nThird line");
+    const lines = blocksToLines(blocks);
+    expect(lines).toHaveLength(3);
+    expect(lines[0].blockPosition).toBe("first");
+    expect(lines[1].blockPosition).toBe("middle");
+    expect(lines[2].blockPosition).toBe("last");
+  });
+
+  test("list items each produce a line", () => {
+    const blocks = parseMarkdown("- item 1\n- item 2");
+    const lines = blocksToLines(blocks);
+    expect(lines).toHaveLength(2);
+    expect(lines[0].blockType).toBe("list");
+    expect(lines[0].html).toContain("item 1");
+    expect(lines[1].html).toContain("item 2");
+  });
+
+  test("line numbers are sequential including blanks", () => {
+    const md = "# Title\n\n- item\n\n> quote";
+    const blocks = parseMarkdown(md);
+    const lines = blocksToLines(blocks);
+    const nums = lines.map((l) => l.lineNumber);
+    expect(nums).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  test("mixed content produces correct line count", () => {
+    const md = [
+      "# Title", // 1
+      "", // 2
+      "Some text", // 3
+      "", // 4
+      "```js", // 5
+      "code()", // 6
+      "```", // 7
+      "", // 8
+      "- item", // 9
+    ].join("\n");
+    const blocks = parseMarkdown(md);
+    const lines = blocksToLines(blocks);
+    expect(lines).toHaveLength(9);
+    expect(lines[0].blockType).toBe("heading");
+    expect(lines[1].isBlank).toBe(true);
+    expect(lines[2].blockType).toBe("paragraph");
+    expect(lines[3].isBlank).toBe(true);
+    expect(lines[4].blockType).toBe("code");
+    expect(lines[4].isFence).toBe(true);
+    expect(lines[5].blockType).toBe("code");
+    expect(lines[6].blockType).toBe("code");
+    expect(lines[6].isFence).toBe(true);
+    expect(lines[7].isBlank).toBe(true);
+    expect(lines[8].blockType).toBe("list");
   });
 });

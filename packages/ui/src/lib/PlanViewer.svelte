@@ -1,13 +1,15 @@
 <script lang="ts">
-  import type { LineAnnotation, Block, FileSnippet } from "../types";
-  import { isDiffContent, escapeHtml } from "../utils/diff";
+  import type { LineAnnotation, PlanLine, FileSnippet } from "../types";
+  import type { CollapsedDiffItem } from "../utils/diff";
+  import { escapeHtml } from "../utils/diff";
   import InlineComment from "./InlineComment.svelte";
   import FileSnippetPanel from "./FileSnippetPanel.svelte";
 
   interface Props {
-    blocks: Block[];
+    lines: PlanLine[];
     annotations: LineAnnotation[];
     fileSnippets?: FileSnippet[];
+    diffLines?: CollapsedDiffItem[] | null;
     theme: "dark" | "light";
     onAddAnnotation: (a: LineAnnotation) => void;
     onRemoveAnnotation: (id: string) => void;
@@ -15,9 +17,10 @@
   }
 
   let {
-    blocks,
+    lines,
     annotations,
     fileSnippets = [],
+    diffLines = null,
     theme,
     onAddAnnotation,
     onRemoveAnnotation,
@@ -28,6 +31,17 @@
   let activeSnippet = $state<FileSnippet | null>(null);
   let hoveredLine = $state<number | null>(null);
   let selectionAnchor = $state<number | null>(null);
+  let dragging = $state(false);
+  let dragStart = $state<number | null>(null);
+  let dragEnd = $state<number | null>(null);
+
+  let dragRange = $derived.by(() => {
+    if (!dragging || dragStart === null || dragEnd === null) return null;
+    return {
+      start: Math.min(dragStart, dragEnd),
+      end: Math.max(dragStart, dragEnd),
+    };
+  });
 
   // Build a lookup map from file paths to snippets
   let snippetMap = $derived.by(() => {
@@ -49,6 +63,19 @@
     return set;
   });
 
+  function isInDragRange(lineNum: number): boolean {
+    if (!dragRange) return false;
+    return lineNum >= dragRange.start && lineNum <= dragRange.end;
+  }
+
+  function isLineHovered(lineNum: number): boolean {
+    return !dragging && hoveredLine === lineNum;
+  }
+
+  function isLineHighlighted(lineNum: number): boolean {
+    return highlightedLines.has(lineNum);
+  }
+
   function handleFileRefClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
     const ref = target.closest("[data-file-path]") as HTMLElement | null;
@@ -57,7 +84,6 @@
     if (!path) return;
     const snippet = snippetMap.get(path);
     if (!snippet || !snippet.content) return;
-
     activeSnippet = snippet;
     e.stopPropagation();
   }
@@ -72,51 +98,51 @@
     }
   }
 
-  function handlePlusClick(e: MouseEvent, lineNum: number) {
+  function handlePlusMouseDown(e: MouseEvent, lineNum: number) {
+    e.preventDefault();
     if (e.shiftKey && selectionAnchor !== null) {
-      // Range selection
       const start = Math.min(selectionAnchor, lineNum);
       const end = Math.max(selectionAnchor, lineNum);
-      const rawLines = getRawLinesInRange(start, end);
-      const id = `ann-${Date.now()}`;
-      onAddAnnotation({
-        id,
-        startLine: start,
-        endLine: end,
-        selectedText: rawLines,
-        comment: "",
-      });
-      editingId = id;
+      createAnnotationForRange(start, end);
       selectionAnchor = null;
     } else {
-      // Single line
-      const rawLines = getRawLinesInRange(lineNum, lineNum);
-      const id = `ann-${Date.now()}`;
-      onAddAnnotation({
-        id,
-        startLine: lineNum,
-        endLine: lineNum,
-        selectedText: rawLines,
-        comment: "",
-      });
-      editingId = id;
-      selectionAnchor = lineNum;
+      dragging = true;
+      dragStart = lineNum;
+      dragEnd = lineNum;
     }
   }
 
-  function getRawLinesInRange(start: number, end: number): string {
-    const result: string[] = [];
-    for (const block of blocks) {
-      if (block.endLine < start || block.startLine > end) continue;
-      const blockLines = block.raw.split("\n");
-      for (let i = 0; i < blockLines.length; i++) {
-        const lineNum = block.startLine + i;
-        if (lineNum >= start && lineNum <= end) {
-          result.push(blockLines[i]);
-        }
-      }
+  function handleDragEnter(lineNum: number) {
+    if (dragging) {
+      dragEnd = lineNum;
     }
-    return result.join("\n");
+  }
+
+  function handleDocumentMouseUp() {
+    if (!dragging || dragStart === null || dragEnd === null) return;
+    const start = Math.min(dragStart, dragEnd);
+    const end = Math.max(dragStart, dragEnd);
+    createAnnotationForRange(start, end);
+    selectionAnchor = start;
+    dragging = false;
+    dragStart = null;
+    dragEnd = null;
+  }
+
+  function createAnnotationForRange(start: number, end: number) {
+    const rawText = lines
+      .filter((l) => l.lineNumber >= start && l.lineNumber <= end && !l.isBlank)
+      .map((l) => l.raw)
+      .join("\n");
+    const id = `ann-${Date.now()}`;
+    onAddAnnotation({
+      id,
+      startLine: start,
+      endLine: end,
+      selectedText: rawText,
+      comment: "",
+    });
+    editingId = id;
   }
 
   function handleSave(id: string, comment: string) {
@@ -132,138 +158,15 @@
     editingId = null;
   }
 
-  function getAnnotationsEndingAtBlock(block: Block): LineAnnotation[] {
-    return annotations.filter(
-      (a) => a.endLine >= block.startLine && a.endLine <= block.endLine,
-    );
-  }
-
-  function isLineHighlighted(lineNum: number): boolean {
-    return highlightedLines.has(lineNum);
-  }
-
-  function getLineCount(block: Block): number {
-    return block.endLine - block.startLine + 1;
-  }
-
-  // --- Rendering functions ---
-
-  function renderInlineMarkdown(text: string): string {
-    return escapeHtml(text)
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*(.+?)\*/g, "<em>$1</em>")
-      .replace(/`(.+?)`/g, (_match, code: string) => {
-        const pathPart = code.replace(/:.*$/, "");
-        if (snippetMap.has(pathPart)) {
-          return `<code class="inline-code file-ref" data-file-path="${escapeHtml(pathPart)}">${code}</code>`;
-        }
-        return `<code class="inline-code">${code}</code>`;
-      })
-      .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>');
-  }
-
-  function renderHeading(block: Block): string {
-    const match = block.content.match(/^(#{1,6})\s+(.*)/);
-    if (!match) return block.content;
-    const level = match[1].length;
-    const text = renderInlineMarkdown(match[2]);
-    return `<h${level}>${text}</h${level}>`;
-  }
-
-  function renderCode(block: Block): string {
-    const lines = block.content.split("\n");
-    const firstLine = lines[0].trim();
-    const lang = firstLine.replace(/^```/, "").trim();
-    const codeLines = lines.slice(1, -1);
-
-    if (isDiffContent(lang, codeLines)) {
-      const rendered = codeLines
-        .map((line) => {
-          const escaped = escapeHtml(line);
-          if (/^@@\s/.test(line)) {
-            return `<span class="diff-hunk">${escaped}</span>`;
-          }
-          if (line.startsWith("+")) {
-            return `<span class="diff-add">${escaped}</span>`;
-          }
-          if (line.startsWith("-")) {
-            return `<span class="diff-remove">${escaped}</span>`;
-          }
-          return `<span class="diff-context">${escaped}</span>`;
-        })
-        .join("\n");
-      return `<pre class="diff-block"><code>${rendered}</code></pre>`;
-    }
-
-    const code = codeLines.join("\n");
-    return `<pre><code${lang ? ` class="language-${lang}"` : ""}>${escapeHtml(code)}</code></pre>`;
-  }
-
-  function renderList(block: Block): string {
-    const lines = block.content.split("\n");
-    const isOrdered = /^\s*\d+\.\s/.test(lines[0]);
-    const items = lines.map((l) => {
-      const text = l.replace(/^\s*[-*+]\s+/, "").replace(/^\s*\d+\.\s+/, "");
-      return `<li>${renderInlineMarkdown(text)}</li>`;
-    });
-    const tag = isOrdered ? "ol" : "ul";
-    const startAttr =
-      isOrdered && block.listStart ? ` start="${block.listStart}"` : "";
-    return `<${tag}${startAttr}>${items.join("")}</${tag}>`;
-  }
-
-  function renderBlockquote(block: Block): string {
-    const text = block.content
-      .split("\n")
-      .map((l) => l.replace(/^>\s?/, ""))
-      .join("\n");
-    return `<blockquote>${renderInlineMarkdown(text)}</blockquote>`;
-  }
-
-  function renderTable(block: Block): string {
-    const lines = block.content.split("\n").filter((l) => l.trim());
-    if (lines.length < 2) return `<p>${block.content}</p>`;
-
-    const parseRow = (line: string) =>
-      line
-        .split("|")
-        .map((c) => c.trim())
-        .filter((c) => c);
-
-    const headers = parseRow(lines[0]);
-    const rows = lines.slice(2).map(parseRow);
-
-    let html = "<table><thead><tr>";
-    headers.forEach((h) => (html += `<th>${renderInlineMarkdown(h)}</th>`));
-    html += "</tr></thead><tbody>";
-    rows.forEach((row) => {
-      html += "<tr>";
-      row.forEach((cell) => (html += `<td>${renderInlineMarkdown(cell)}</td>`));
-      html += "</tr>";
-    });
-    html += "</tbody></table>";
-    return html;
-  }
-
-  function renderBlock(block: Block): string {
-    switch (block.type) {
-      case "heading":
-        return renderHeading(block);
-      case "code":
-        return renderCode(block);
-      case "list":
-        return renderList(block);
-      case "blockquote":
-        return renderBlockquote(block);
-      case "table":
-        return renderTable(block);
-      case "paragraph":
-        return `<p>${renderInlineMarkdown(block.content)}</p>`;
-    }
+  function getAnnotationsEndingAtLine(lineNum: number): LineAnnotation[] {
+    return annotations.filter((a) => a.endLine === lineNum);
   }
 </script>
 
-<svelte:document onclick={handleDocumentClick} />
+<svelte:document
+  onclick={handleDocumentClick}
+  onmouseup={handleDocumentMouseUp}
+/>
 
 {#if activeSnippet}
   <FileSnippetPanel
@@ -273,91 +176,130 @@
   />
 {/if}
 
-<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
-<div class="plan-viewer" role="presentation" onclick={handleFileRefClick}>
-  {#each blocks as block (block.id)}
-    <div class="block-row {block.type}">
-      <div class="gutter" role="presentation">
-        {#each { length: getLineCount(block) } as _, idx}
-          {@const lineNum = block.startLine + idx}
-          <div
-            class="gutter-line"
-            class:highlighted={isLineHighlighted(lineNum)}
+{#if diffLines}
+  <div class="inline-diff">
+    {#each diffLines as item, i (i)}
+      {#if item.type === "fold"}
+        <div class="diff-fold-row">{"⋯"} {item.count} hidden lines</div>
+      {:else}
+        <div class="diff-row diff-{item.type}">
+          <span class="diff-marker"
+            >{item.type === "add"
+              ? "+"
+              : item.type === "remove"
+                ? "-"
+                : " "}</span
           >
-            <span class="line-number">{lineNum}</span>
+          <span class="diff-text">{item.content}</span>
+        </div>
+      {/if}
+    {/each}
+  </div>
+{:else}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_no_noninteractive_element_interactions -->
+  <div class="plan-viewer" role="presentation" onclick={handleFileRefClick}>
+    {#each lines as line (line.lineNumber)}
+      {#if line.isBlank}
+        <div class="plan-line blank">
+          <div class="gutter-cell"></div>
+          <div class="btn-cell"></div>
+          <div class="content-cell"></div>
+        </div>
+      {:else}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="plan-line {line.blockType} pos-{line.blockPosition}"
+          class:fence={line.isFence}
+          class:highlighted={isLineHighlighted(line.lineNumber)}
+          class:line-hovered={isLineHovered(line.lineNumber)}
+          class:drag-selected={isInDragRange(line.lineNumber)}
+        >
+          <div class="gutter-cell">
+            <span class="line-number">{line.lineNumber}</span>
           </div>
-        {/each}
-      </div>
-      <div class="btn-col" role="presentation">
-        {#each { length: getLineCount(block) } as _, idx}
-          {@const lineNum = block.startLine + idx}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
-            class="btn-line"
-            onmouseenter={() => (hoveredLine = lineNum)}
+            class="btn-cell"
+            onmouseenter={() => {
+              hoveredLine = line.lineNumber;
+              handleDragEnter(line.lineNumber);
+            }}
             onmouseleave={() => {
-              if (hoveredLine === lineNum) hoveredLine = null;
+              if (hoveredLine === line.lineNumber && !dragging)
+                hoveredLine = null;
             }}
           >
             <button
               class="add-comment-btn"
-              class:visible={hoveredLine === lineNum}
-              onclick={(e) => handlePlusClick(e, lineNum)}
-              aria-label="Add comment to line {lineNum}">+</button
+              class:visible={hoveredLine === line.lineNumber ||
+                isInDragRange(line.lineNumber)}
+              onmousedown={(e) => handlePlusMouseDown(e, line.lineNumber)}
+              aria-label="Add comment to line {line.lineNumber}">+</button
             >
           </div>
-        {/each}
-      </div>
-      <div
-        class="content"
-        class:has-annotation={getAnnotationsEndingAtBlock(block).length > 0}
-      >
-        {@html renderBlock(block)}
-      </div>
-    </div>
-    {#each getAnnotationsEndingAtBlock(block) as ann (ann.id)}
-      <div class="comment-wrapper">
-        <InlineComment
-          annotation={ann}
-          editing={editingId === ann.id}
-          onSave={handleSave}
-          onCancel={handleCancel}
-          onDelete={onRemoveAnnotation}
-          onEdit={(id) => (editingId = id)}
-        />
-      </div>
+          <div class="content-cell">
+            {@html line.html}
+          </div>
+        </div>
+      {/if}
+      {#each getAnnotationsEndingAtLine(line.lineNumber) as ann (ann.id)}
+        <div class="comment-wrapper">
+          <InlineComment
+            annotation={ann}
+            editing={editingId === ann.id}
+            onSave={handleSave}
+            onCancel={handleCancel}
+            onDelete={onRemoveAnnotation}
+            onEdit={(id) => (editingId = id)}
+          />
+        </div>
+      {/each}
     {/each}
-  {/each}
-</div>
+  </div>
+{/if}
 
 <style>
   .plan-viewer {
     font-size: 0.95rem;
   }
 
-  .block-row {
+  .plan-line {
     display: grid;
     grid-template-columns: 40px 28px 1fr;
-    gap: 0;
+    min-height: 1.6em;
   }
 
-  .gutter {
-    display: flex;
-    flex-direction: column;
-    user-select: none;
-    border-right: 1px solid var(--color-border-muted);
+  .plan-line.blank {
+    min-height: 8px;
   }
 
-  .gutter-line {
+  /* Hover and drag selection — full row highlight */
+  .plan-line.line-hovered,
+  .plan-line.drag-selected {
+    box-shadow:
+      inset 0 1px 0 var(--color-accent),
+      inset 0 -1px 0 var(--color-accent);
+    background: var(--color-annotated-bg);
+  }
+
+  .plan-line.highlighted {
+    background: var(--color-annotated-bg);
+  }
+
+  /* Override content-cell background (e.g. code blocks) when row is active */
+  .plan-line.line-hovered .content-cell,
+  .plan-line.drag-selected .content-cell,
+  .plan-line.highlighted .content-cell {
+    background: transparent;
+  }
+
+  /* Gutter */
+  .gutter-cell {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     padding: 0 8px 0 4px;
-    min-height: 1.6em;
-  }
-
-  .gutter-line.highlighted {
-    background: var(--color-annotated-bg);
+    user-select: none;
+    border-right: 1px solid var(--color-border-muted);
   }
 
   .line-number {
@@ -370,17 +312,12 @@
     line-height: 1.6;
   }
 
-  .btn-col {
-    display: flex;
-    flex-direction: column;
-    user-select: none;
-  }
-
-  .btn-line {
+  /* Button column */
+  .btn-cell {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 1.6em;
+    user-select: none;
   }
 
   .add-comment-btn {
@@ -417,178 +354,219 @@
     color: #fff;
   }
 
-  .content {
+  /* Content cell */
+  .content-cell {
     padding: 0 8px;
     min-width: 0;
+    line-height: 1.6;
   }
 
-  /* Align gutter line numbers with content for each block type */
-  .block-row.heading .gutter,
-  .block-row.heading .btn-col {
-    padding-top: 20px;
-  }
-  .block-row.paragraph .gutter,
-  .block-row.paragraph .btn-col {
-    padding-top: 8px;
-  }
-  .block-row.code .gutter,
-  .block-row.code .btn-col {
-    padding-top: 28px;
-  }
-  .block-row.blockquote .gutter,
-  .block-row.blockquote .btn-col {
-    padding-top: 8px;
-  }
-  .block-row.table .gutter,
-  .block-row.table .btn-col {
-    padding-top: 12px;
-  }
+  /* --- Block type styles --- */
 
-  /* Heading styles */
-  .block-row :global(h1) {
+  /* Heading */
+  .plan-line.heading .content-cell :global(.heading-text) {
+    color: var(--color-text-emphasis);
+    font-weight: 600;
+  }
+  .plan-line.heading .content-cell :global(.h1) {
     font-size: 1.75rem;
-    margin: 24px 0 12px;
-    color: var(--color-text-emphasis);
-    border-bottom: 1px solid var(--color-border-muted);
-    padding-bottom: 8px;
   }
-  .block-row :global(h2) {
+  .plan-line.heading .content-cell :global(.h2) {
     font-size: 1.4rem;
-    margin: 20px 0 10px;
-    color: var(--color-text-emphasis);
   }
-  .block-row :global(h3) {
+  .plan-line.heading .content-cell :global(.h3) {
     font-size: 1.15rem;
-    margin: 16px 0 8px;
-    color: var(--color-text-emphasis);
   }
-  .block-row :global(h4),
-  .block-row :global(h5),
-  .block-row :global(h6) {
+  .plan-line.heading .content-cell :global(.h4),
+  .plan-line.heading .content-cell :global(.h5),
+  .plan-line.heading .content-cell :global(.h6) {
     font-size: 1rem;
-    margin: 12px 0 6px;
-    color: var(--color-text-emphasis);
+  }
+  .plan-line.heading {
+    margin-top: 16px;
+  }
+  .plan-line.heading.pos-only .content-cell {
+    padding-top: 8px;
+    padding-bottom: 4px;
   }
 
   /* Paragraph */
-  .block-row :global(p) {
-    margin: 8px 0;
+  .plan-line.paragraph .content-cell :global(.p-line) {
+    display: inline;
+  }
+  .plan-line.paragraph.pos-first,
+  .plan-line.paragraph.pos-only {
+    margin-top: 4px;
+  }
+  .plan-line.paragraph.pos-last,
+  .plan-line.paragraph.pos-only {
+    margin-bottom: 4px;
   }
 
-  /* Code */
-  .block-row :global(pre) {
+  /* Code — visual grouping via connected backgrounds */
+  .plan-line.code .content-cell {
     background: var(--color-bg-subtle);
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    padding: 16px;
-    overflow-x: auto;
-    margin: 12px 0;
-  }
-  .block-row :global(code) {
     font-family:
       "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
     font-size: 0.85rem;
+    padding: 0 16px;
+    border-left: 1px solid var(--color-border);
+    border-right: 1px solid var(--color-border);
   }
-  .block-row :global(.inline-code) {
+  .plan-line.code.pos-first .content-cell {
+    border-top: 1px solid var(--color-border);
+    border-radius: 6px 6px 0 0;
+    padding-top: 4px;
+  }
+  .plan-line.code.pos-last .content-cell {
+    border-bottom: 1px solid var(--color-border);
+    border-radius: 0 0 6px 6px;
+    padding-bottom: 4px;
+  }
+  .plan-line.code.pos-only .content-cell {
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  .plan-line.fence .content-cell :global(.code-fence) {
+    color: var(--color-text-muted);
+    opacity: 0.5;
+    font-size: 0.8rem;
+  }
+  .plan-line.code .content-cell :global(.code-line) {
+    display: block;
+    white-space: pre;
+  }
+
+  /* Diff styles within code */
+  .plan-line.code .content-cell :global(.diff-add) {
+    background: var(--color-diff-add-bg);
+    color: var(--color-diff-add-text);
+  }
+  .plan-line.code .content-cell :global(.diff-remove) {
+    background: var(--color-diff-remove-bg);
+    color: var(--color-diff-remove-text);
+  }
+  .plan-line.code .content-cell :global(.diff-hunk) {
+    color: var(--color-diff-hunk);
+  }
+
+  /* List */
+  .plan-line.list .content-cell :global(.list-item) {
+    display: block;
+    padding-left: 8px;
+  }
+  .plan-line.list .content-cell :global(.list-marker) {
+    display: inline-block;
+    width: 1.5em;
+    color: var(--color-text-muted);
+  }
+
+  /* Blockquote */
+  .plan-line.blockquote .content-cell {
+    border-left: 3px solid var(--color-border);
+    padding-left: 16px;
+    color: var(--color-text-muted);
+  }
+
+  /* Table */
+  .plan-line.table .content-cell :global(.table-row-line) {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .plan-line.table .content-cell :global(th),
+  .plan-line.table .content-cell :global(td) {
+    border: 1px solid var(--color-border);
+    padding: 4px 12px;
+    text-align: left;
+  }
+  .plan-line.table .content-cell :global(th) {
+    background: var(--color-bg-subtle);
+    font-weight: 600;
+  }
+  .plan-line.table .content-cell :global(.table-separator) {
+    display: none;
+  }
+
+  /* Inline code & file refs */
+  .content-cell :global(.inline-code) {
     background: var(--color-bg-inset);
     padding: 2px 6px;
     border-radius: 3px;
     font-size: 0.85em;
+    font-family:
+      "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
   }
-  .block-row :global(.file-ref) {
+  .content-cell :global(.file-ref) {
     cursor: pointer;
     border-bottom: 1px dashed var(--color-link);
     color: var(--color-link);
     transition: background 0.1s;
   }
-  .block-row :global(.file-ref:hover) {
+  .content-cell :global(.file-ref:hover) {
     background: rgba(88, 166, 255, 0.1);
   }
 
-  /* List */
-  .block-row.list .content {
-    padding-top: 0;
-    padding-bottom: 0;
-  }
-  .block-row :global(ul),
-  .block-row :global(ol) {
-    padding-left: 24px;
-    margin: 0;
-  }
-  .block-row :global(li) {
-    margin: 2px 0;
-  }
-
-  /* Blockquote */
-  .block-row :global(blockquote) {
-    border-left: 3px solid var(--color-border);
-    padding: 4px 16px;
-    color: var(--color-text-muted);
-    margin: 8px 0;
-  }
-
-  /* Table */
-  .block-row :global(table) {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 12px 0;
-  }
-  .block-row :global(th),
-  .block-row :global(td) {
-    border: 1px solid var(--color-border);
-    padding: 8px 12px;
-    text-align: left;
-  }
-  .block-row :global(th) {
-    background: var(--color-bg-subtle);
-    font-weight: 600;
-  }
-
-  /* Diff */
-  .block-row :global(.diff-block) {
-    padding: 0;
-  }
-  .block-row :global(.diff-block code) {
-    display: block;
-    padding: 16px;
-  }
-  .block-row :global(.diff-add) {
-    display: inline-block;
-    width: 100%;
-    background: var(--color-diff-add-bg);
-    color: var(--color-diff-add-text);
-  }
-  .block-row :global(.diff-remove) {
-    display: inline-block;
-    width: 100%;
-    background: var(--color-diff-remove-bg);
-    color: var(--color-diff-remove-text);
-  }
-  .block-row :global(.diff-hunk) {
-    display: inline-block;
-    width: 100%;
-    color: var(--color-diff-hunk);
-  }
-  .block-row :global(.diff-context) {
-    display: inline-block;
-    width: 100%;
-  }
-
   /* Links & emphasis */
-  .block-row :global(a) {
+  .content-cell :global(a) {
     color: var(--color-link);
     text-decoration: none;
   }
-  .block-row :global(a:hover) {
+  .content-cell :global(a:hover) {
     text-decoration: underline;
   }
-  .block-row :global(strong) {
+  .content-cell :global(strong) {
     color: var(--color-text-emphasis);
   }
 
-  /* Comment wrapper — full width below block row */
+  /* Comment wrapper */
   .comment-wrapper {
     margin-left: 68px;
     padding: 0 8px;
+  }
+
+  /* Inline diff view */
+  .inline-diff {
+    font-family:
+      "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  .diff-row {
+    display: flex;
+    padding: 0 8px;
+    white-space: pre-wrap;
+    min-height: 1.5em;
+  }
+  .diff-row.diff-add {
+    background: var(--color-diff-add-bg);
+    color: var(--color-diff-add-text);
+  }
+  .diff-row.diff-remove {
+    background: var(--color-diff-remove-bg);
+    color: var(--color-diff-remove-text);
+  }
+  .diff-row.diff-context {
+    color: var(--color-text-muted);
+  }
+  .diff-marker {
+    display: inline-block;
+    width: 1.5em;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  .diff-text {
+    flex: 1;
+    min-width: 0;
+  }
+  .diff-fold-row {
+    padding: 4px 8px;
+    text-align: center;
+    color: var(--color-text-muted);
+    font-style: italic;
+    background: var(--color-bg-subtle);
+    border-top: 1px solid var(--color-border-muted);
+    border-bottom: 1px solid var(--color-border-muted);
   }
 </style>

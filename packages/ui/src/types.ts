@@ -23,6 +23,17 @@ export interface Block {
   endLine: number;
 }
 
+export interface PlanLine {
+  lineNumber: number;
+  blockId: string;
+  blockType: Block["type"] | "blank";
+  html: string;
+  raw: string;
+  blockPosition: "only" | "first" | "middle" | "last";
+  isFence?: boolean;
+  isBlank?: boolean;
+}
+
 export interface SessionSummary {
   sessionId: string;
   title: string;

@@ -6,6 +6,7 @@
     version?: string;
     latestVersion?: string;
     commentCounts: Record<string, number>;
+    activeCommentCount: number;
     versionCount: number;
     theme: "dark" | "light";
     sessions: SessionSummary[];
@@ -13,6 +14,8 @@
     onSelect: (sessionId: string) => void;
     onToggleTheme: () => void;
     onCompare: () => void;
+    diffOnly: boolean;
+    onToggleDiffOnly: () => void;
     submitting: boolean;
     onApprove: () => void;
     onDeny: () => void;
@@ -23,6 +26,7 @@
     version = "",
     latestVersion = "",
     commentCounts,
+    activeCommentCount,
     versionCount,
     theme,
     sessions,
@@ -30,6 +34,8 @@
     onSelect,
     onToggleTheme,
     onCompare,
+    diffOnly,
+    onToggleDiffOnly,
     submitting,
     onApprove,
     onDeny,
@@ -118,15 +124,18 @@
       {/if}
     </button>
     {#if versionCount > 1}
-      <button class="btn btn-secondary" onclick={onCompare}>Compare</button>
+      <button
+        class="btn btn-diff-toggle"
+        class:active={diffOnly}
+        onclick={onToggleDiffOnly}>Diff</button
+      >
+      <button class="btn btn-compare" onclick={onCompare}>Compare</button>
     {/if}
     <button class="btn btn-deny" onclick={onDeny} disabled={submitting}
-      >Request Changes</button
+      >{activeCommentCount > 0 ? "Request Changes" : "Reject"}</button
     >
-    <button
-      class="btn btn-approve"
-      onclick={onApprove}
-      disabled={submitting}>Accept</button
+    <button class="btn btn-approve" onclick={onApprove} disabled={submitting}
+      >Accept</button
     >
   </div>
 </header>
@@ -282,5 +291,31 @@
   .btn-secondary:hover {
     background: var(--color-bg-overlay);
     color: var(--color-text-default);
+  }
+  .btn-diff-toggle {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+  }
+  .btn-diff-toggle:hover {
+    background: var(--color-bg-overlay);
+    color: var(--color-text-default);
+  }
+  .btn-diff-toggle.active {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: #fff;
+  }
+  .btn-diff-toggle.active:hover {
+    background: var(--color-accent-hover);
+  }
+  .btn-compare {
+    background: transparent;
+    border: 1px solid var(--color-text-muted);
+    color: var(--color-text-default);
+  }
+  .btn-compare:hover {
+    background: var(--color-bg-overlay);
+    color: var(--color-text-emphasis);
   }
 </style>

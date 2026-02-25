@@ -6,8 +6,10 @@
     PlanVersion,
     SessionSummary,
   } from "./types";
-  import { parseMarkdown } from "./utils/parser";
+  import { parseMarkdown, blocksToLines } from "./utils/parser";
   import { formatFeedback } from "./utils/feedback";
+  import { computeDiff, collapseDiffContext } from "./utils/diff";
+  import type { CollapsedDiffItem } from "./utils/diff";
   import Toolbar from "./lib/Toolbar.svelte";
   import PlanViewer from "./lib/PlanViewer.svelte";
   import DiffOverlay from "./lib/DiffOverlay.svelte";
@@ -31,6 +33,7 @@
   let version = $state("");
   let latestVersion = $state("");
   let showDiff = $state(false);
+  let diffOnly = $state(false);
   let loading = $state(true);
   let loadError = $state("");
   let error = $state("");
@@ -193,6 +196,25 @@
   );
   let versions = $derived(activeSession?.previousPlans ?? []);
 
+  let snippetPaths = $derived.by(() => {
+    const paths = new Set<string>();
+    for (const s of activeSession?.fileSnippets ?? []) {
+      paths.add(s.path);
+    }
+    return paths;
+  });
+
+  let lines = $derived(blocksToLines(blocks, snippetPaths));
+
+  let inlineDiffLines = $derived.by<CollapsedDiffItem[] | null>(() => {
+    if (!diffOnly || !activeSession) return null;
+    const prevPlans = activeSession.previousPlans ?? [];
+    if (prevPlans.length === 0) return null;
+    const previousPlan = prevPlans[prevPlans.length - 1].plan;
+    const raw = computeDiff(previousPlan, activeSession.plan);
+    return collapseDiffContext(raw);
+  });
+
   let title = $derived.by(() => {
     const firstHeading = blocks.find((b) => b.type === "heading");
     if (firstHeading) return firstHeading.content.replace(/^#+\s*/, "");
@@ -211,6 +233,10 @@
     }
     return counts;
   });
+
+  let activeCommentCount = $derived(
+    annotations.filter((a) => a.comment.trim()).length,
+  );
 
   function addAnnotation(annotation: LineAnnotation) {
     annotations = [...annotations, annotation];
@@ -281,6 +307,7 @@
     {version}
     {latestVersion}
     {commentCounts}
+    {activeCommentCount}
     versionCount={versions.length + 1}
     {theme}
     {submitting}
@@ -289,14 +316,17 @@
     onSelect={switchSession}
     onToggleTheme={toggleTheme}
     onCompare={() => (showDiff = true)}
+    {diffOnly}
+    onToggleDiffOnly={() => (diffOnly = !diffOnly)}
     onApprove={() => submitDecision("approve")}
     onDeny={() => submitDecision("deny")}
   />
   <main class="main">
     <PlanViewer
-      {blocks}
+      {lines}
       {annotations}
       fileSnippets={activeSession?.fileSnippets}
+      diffLines={inlineDiffLines}
       {theme}
       onAddAnnotation={addAnnotation}
       onRemoveAnnotation={removeAnnotation}

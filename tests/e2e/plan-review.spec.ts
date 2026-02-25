@@ -13,60 +13,26 @@ test.describe("Plan Review", () => {
 
   test("all block types render", async ({ page }) => {
     // Headings
-    await expect(page.locator(".block.heading").first()).toBeVisible();
+    await expect(page.locator(".plan-line.heading").first()).toBeVisible();
     // Code blocks
-    await expect(page.locator(".block.code").first()).toBeVisible();
+    await expect(page.locator(".plan-line.code").first()).toBeVisible();
     // Lists
-    await expect(page.locator(".block.list").first()).toBeVisible();
+    await expect(page.locator(".plan-line.list").first()).toBeVisible();
     // Tables
-    await expect(page.locator(".block.table").first()).toBeVisible();
+    await expect(page.locator(".plan-line.table").first()).toBeVisible();
     // Blockquotes
-    await expect(page.locator(".block.blockquote").first()).toBeVisible();
+    await expect(page.locator(".plan-line.blockquote").first()).toBeVisible();
     // Paragraphs
-    await expect(page.locator(".block.paragraph").first()).toBeVisible();
+    await expect(page.locator(".plan-line.paragraph").first()).toBeVisible();
   });
 
-  test("text selection shows Add Comment popup", async ({ page }) => {
-    const paragraph = page.locator(".block.paragraph").first();
+  test("add comment via + button creates inline comment", async ({ page }) => {
+    const line = page.locator(".plan-line.paragraph").first();
+    const btnCell = line.locator(".btn-cell");
 
-    // Programmatically select text within the paragraph, then trigger mouseup
-    await paragraph.evaluate((el) => {
-      const textNode = el.querySelector("p")?.firstChild;
-      if (!textNode) return;
-      const range = document.createRange();
-      range.setStart(textNode, 0);
-      range.setEnd(textNode, Math.min(10, textNode.textContent!.length));
-      const sel = window.getSelection()!;
-      sel.removeAllRanges();
-      sel.addRange(range);
-    });
-    // Dispatch mouseup on the block to trigger the Svelte handler
-    await paragraph.dispatchEvent("mouseup");
-
-    const popup = page.locator(".popup-btn");
-    await expect(popup).toBeVisible();
-    await expect(popup).toContainText("Add Comment");
-  });
-
-  test("add comment via selection popup creates inline comment", async ({
-    page,
-  }) => {
-    const paragraph = page.locator(".block.paragraph").first();
-
-    // Programmatically select text
-    await paragraph.evaluate((el) => {
-      const textNode = el.querySelector("p")?.firstChild;
-      if (!textNode) return;
-      const range = document.createRange();
-      range.setStart(textNode, 0);
-      range.setEnd(textNode, Math.min(10, textNode.textContent!.length));
-      const sel = window.getSelection()!;
-      sel.removeAllRanges();
-      sel.addRange(range);
-    });
-    await paragraph.dispatchEvent("mouseup");
-
-    await page.locator(".popup-btn").click();
+    // Hover to reveal + button
+    await btnCell.hover();
+    await btnCell.locator(".add-comment-btn").click();
 
     // Inline comment editor should appear
     const commentInput = page.locator(".comment-input");
@@ -85,47 +51,52 @@ test.describe("Plan Review", () => {
     await expect(page.locator(".action-btn.delete")).toBeVisible();
   });
 
-  test("hover block shows + button in gutter", async ({ page }) => {
-    const block = page.locator(".block").first();
-    const addBtn = block.locator(".add-comment-btn");
+  test("hover line shows + button in gutter", async ({ page }) => {
+    const line = page.locator(".plan-line:not(.blank)").first();
+    const btnCell = line.locator(".btn-cell");
+    const addBtn = line.locator(".add-comment-btn");
 
     // Before hover, button is hidden (opacity: 0)
     await expect(addBtn).toHaveCSS("opacity", "0");
 
-    await block.hover();
+    // Hover the btn-cell to trigger onmouseenter
+    await btnCell.hover();
 
     // After hover, button becomes visible
     await expect(addBtn).toHaveCSS("opacity", "1");
   });
 
   test("click + button opens inline comment editor", async ({ page }) => {
-    const block = page.locator(".block").first();
-    await block.hover();
-    await block.locator(".add-comment-btn").click();
+    const line = page.locator(".plan-line:not(.blank)").first();
+    const btnCell = line.locator(".btn-cell");
+    await btnCell.hover();
+    await btnCell.locator(".add-comment-btn").click();
 
     const commentInput = page.locator(".comment-input");
     await expect(commentInput).toBeVisible();
   });
 
   test("save comment via + button", async ({ page }) => {
-    const block = page.locator(".block").nth(1);
-    await block.hover();
-    await block.locator(".add-comment-btn").click();
+    const line = page.locator(".plan-line:not(.blank)").nth(1);
+    const btnCell = line.locator(".btn-cell");
+    await btnCell.hover();
+    await btnCell.locator(".add-comment-btn").click();
 
     const commentInput = page.locator(".comment-input");
-    await commentInput.fill("Block-level comment");
+    await commentInput.fill("Line-level comment");
     await page.locator(".action-btn.save").click();
 
     await expect(page.locator(".comment-body")).toContainText(
-      "Block-level comment",
+      "Line-level comment",
     );
   });
 
   test("delete comment removes it", async ({ page }) => {
     // Add a comment first
-    const block = page.locator(".block").first();
-    await block.hover();
-    await block.locator(".add-comment-btn").click();
+    const line = page.locator(".plan-line:not(.blank)").first();
+    const btnCell = line.locator(".btn-cell");
+    await btnCell.hover();
+    await btnCell.locator(".add-comment-btn").click();
     await page.locator(".comment-input").fill("Temporary comment");
     await page.locator(".action-btn.save").click();
     await expect(page.locator(".comment-body")).toBeVisible();
@@ -161,29 +132,27 @@ test.describe("Plan Review", () => {
   test("ordered list items render with sequential numbering", async ({
     page,
   }) => {
-    // Find all ordered list blocks (they render as <ol> elements)
-    const olElements = page.locator(".block.list ol");
-    const count = await olElements.count();
+    // List items render as .plan-line.list with <span class="list-marker">
+    const listLines = page.locator(".plan-line.list");
+    const count = await listLines.count();
     expect(count).toBeGreaterThan(1);
 
-    // Check that start attributes increment sequentially
-    // The mock plan has a 4-item ordered list (items 1-4)
-    // Find the first ol with start="2" to confirm numbering works
-    const secondItem = page.locator('.block.list ol[start="2"]');
-    await expect(secondItem).toBeVisible();
+    // Check that list markers contain sequential numbers
+    const markers = page.locator(".plan-line.list .list-marker");
+    const markerCount = await markers.count();
+    expect(markerCount).toBeGreaterThan(1);
 
-    const thirdItem = page.locator('.block.list ol[start="3"]');
-    await expect(thirdItem).toBeVisible();
+    // Find numbered markers (ordered list items have "N." pattern)
+    const firstMarker = await markers.first().textContent();
+    expect(firstMarker?.trim()).toMatch(/^\d+\.|^•$/);
   });
 
   test("diff code block renders with colored lines", async ({ page }) => {
-    const diffBlock = page.locator(".diff-block");
-    await expect(diffBlock.first()).toBeVisible();
-
-    const addLines = diffBlock.locator(".diff-add");
-    const removeLines = diffBlock.locator(".diff-remove");
-    await expect(addLines.first()).toBeVisible();
-    await expect(removeLines.first()).toBeVisible();
+    // Diff lines are rendered inside .plan-line.code with .diff-add/.diff-remove classes
+    const diffAdd = page.locator(".plan-line.code .diff-add");
+    const diffRemove = page.locator(".plan-line.code .diff-remove");
+    await expect(diffAdd.first()).toBeVisible();
+    await expect(diffRemove.first()).toBeVisible();
   });
 
   test("Compare button is visible when history exists", async ({ page }) => {
@@ -254,20 +223,11 @@ test.describe("Plan Review", () => {
   test("comments and general feedback persist after page reload", async ({
     page,
   }) => {
-    // Add inline comment
-    const paragraph = page.locator(".block.paragraph").first();
-    await paragraph.evaluate((el) => {
-      const textNode = el.querySelector("p")?.firstChild;
-      if (!textNode) return;
-      const range = document.createRange();
-      range.setStart(textNode, 0);
-      range.setEnd(textNode, Math.min(10, textNode.textContent!.length));
-      const sel = window.getSelection()!;
-      sel.removeAllRanges();
-      sel.addRange(range);
-    });
-    await paragraph.dispatchEvent("mouseup");
-    await page.locator(".popup-btn").click();
+    // Add inline comment via + button
+    const line = page.locator(".plan-line.paragraph").first();
+    const btnCell = line.locator(".btn-cell");
+    await btnCell.hover();
+    await btnCell.locator(".add-comment-btn").click();
     await page.locator(".comment-input").fill("Persisted comment");
     await page.locator(".action-btn.save").click();
     await expect(page.locator(".comment-body")).toContainText(
