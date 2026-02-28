@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type {
-    LineAnnotation,
-    Block,
+    UnitAnnotation,
+    AnnotatableUnit,
     PlanVersion,
     SessionSummary,
   } from "./types";
-  import { parseMarkdown, blocksToLines } from "./utils/parser";
+  import { renderPlan } from "./utils/markedRenderer";
   import { formatFeedback } from "./utils/feedback";
   import { computeDiff, collapseDiffContext } from "./utils/diff";
   import type { CollapsedDiffItem } from "./utils/diff";
@@ -15,19 +15,24 @@
   import DiffOverlay from "./lib/DiffOverlay.svelte";
 
   interface SessionUIState {
-    annotations: LineAnnotation[];
+    annotations: UnitAnnotation[];
     generalComment: string;
-    blocks: Block[];
+    html: string;
+    units: AnnotatableUnit[];
+    title: string;
+    codeBlockMap: Map<string, string>;
   }
 
   let sessions = $state<SessionSummary[]>([]);
   let activeSessionId = $state<string | null>(null);
-  // Store per-session UI state, keyed by sessionId
   const sessionUIStates = new Map<string, SessionUIState>();
 
-  // Active session's direct state (for reactivity — same pattern as original code)
-  let blocks = $state<Block[]>([]);
-  let annotations = $state<LineAnnotation[]>([]);
+  // Active session's direct state (for reactivity)
+  let html = $state("");
+  let units = $state<AnnotatableUnit[]>([]);
+  let codeBlockMap = $state<Map<string, string>>(new Map());
+  let sessionTitle = $state("Plan Review");
+  let annotations = $state<UnitAnnotation[]>([]);
   let generalComment = $state("");
 
   let version = $state("");
@@ -59,7 +64,7 @@
 
   function saveDraft(
     sessionId: string,
-    ann: LineAnnotation[],
+    ann: UnitAnnotation[],
     comment: string,
   ) {
     localStorage.setItem(
@@ -70,11 +75,19 @@
 
   function loadDraft(
     sessionId: string,
-  ): { annotations: LineAnnotation[]; generalComment: string } | null {
+  ): { annotations: UnitAnnotation[]; generalComment: string } | null {
     const raw = localStorage.getItem(`ipe-draft-${sessionId}`);
     if (!raw) return null;
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      // Discard old LineAnnotation drafts (they have startLine/endLine instead of startUnitId/endUnitId)
+      if (
+        parsed.annotations?.length > 0 &&
+        "startLine" in parsed.annotations[0]
+      ) {
+        return null;
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -90,7 +103,6 @@
       if (state) {
         state.annotations = annotations;
         state.generalComment = generalComment;
-        state.blocks = blocks;
       }
       saveDraft(activeSessionId, annotations, generalComment);
     }
@@ -99,7 +111,10 @@
   function loadSessionState(sessionId: string) {
     const state = sessionUIStates.get(sessionId);
     if (state) {
-      blocks = state.blocks;
+      html = state.html;
+      units = state.units;
+      codeBlockMap = state.codeBlockMap;
+      sessionTitle = state.title;
       annotations = state.annotations;
       generalComment = state.generalComment;
     }
@@ -115,13 +130,17 @@
 
   function addSessionToUI(s: SessionSummary) {
     const saved = loadDraft(s.sessionId);
+    const paths = new Set(s.fileSnippets?.map((f) => f.path) ?? []);
+    const result = renderPlan(s.plan, paths);
     sessions = [...sessions, s];
     sessionUIStates.set(s.sessionId, {
       annotations: saved?.annotations ?? [],
       generalComment: saved?.generalComment ?? "",
-      blocks: parseMarkdown(s.plan),
+      html: result.html,
+      units: result.units,
+      title: result.title,
+      codeBlockMap: result.codeBlockMap,
     });
-    // Auto-select first session
     if (!activeSessionId) {
       activeSessionId = s.sessionId;
       loadSessionState(s.sessionId);
@@ -140,7 +159,9 @@
         loadSessionState(activeSessionId);
       } else {
         activeSessionId = null;
-        blocks = [];
+        html = "";
+        units = [];
+        sessionTitle = "Plan Review";
         annotations = [];
         generalComment = "";
         window.close();
@@ -151,7 +172,6 @@
   onMount(() => {
     let es: EventSource | undefined;
 
-    // Fetch version info from health endpoint
     fetch("/api/health")
       .then((r) => r.json())
       .then((data: { version?: string; latestVersion?: string }) => {
@@ -168,7 +188,6 @@
         }
         loading = false;
 
-        // Connect SSE for real-time updates
         es = new EventSource("/api/events");
         es.addEventListener("session-added", (e) => {
           const s = JSON.parse(e.data) as SessionSummary;
@@ -196,16 +215,6 @@
   );
   let versions = $derived(activeSession?.previousPlans ?? []);
 
-  let snippetPaths = $derived.by(() => {
-    const paths = new Set<string>();
-    for (const s of activeSession?.fileSnippets ?? []) {
-      paths.add(s.path);
-    }
-    return paths;
-  });
-
-  let lines = $derived(blocksToLines(blocks, snippetPaths));
-
   let inlineDiffLines = $derived.by<CollapsedDiffItem[] | null>(() => {
     if (!diffOnly || !activeSession) return null;
     const prevPlans = activeSession.previousPlans ?? [];
@@ -213,12 +222,6 @@
     const previousPlan = prevPlans[prevPlans.length - 1].plan;
     const raw = computeDiff(previousPlan, activeSession.plan);
     return collapseDiffContext(raw);
-  });
-
-  let title = $derived.by(() => {
-    const firstHeading = blocks.find((b) => b.type === "heading");
-    if (firstHeading) return firstHeading.content.replace(/^#+\s*/, "");
-    return "Plan Review";
   });
 
   let commentCounts = $derived.by(() => {
@@ -238,7 +241,7 @@
     annotations.filter((a) => a.comment.trim()).length,
   );
 
-  function addAnnotation(annotation: LineAnnotation) {
+  function addAnnotation(annotation: UnitAnnotation) {
     annotations = [...annotations, annotation];
   }
 
@@ -303,7 +306,7 @@
     />
   {/if}
   <Toolbar
-    {title}
+    title={sessionTitle}
     {version}
     {latestVersion}
     {commentCounts}
@@ -323,7 +326,9 @@
   />
   <main class="main">
     <PlanViewer
-      {lines}
+      {html}
+      {units}
+      {codeBlockMap}
       {annotations}
       fileSnippets={activeSession?.fileSnippets}
       diffLines={inlineDiffLines}
@@ -365,7 +370,7 @@
     --color-delete-text: #f85149;
     --color-delete-hover-bg: rgba(248, 81, 73, 0.1);
     --color-annotated-border: #1f6feb;
-    --color-annotated-bg: rgba(31, 111, 235, 0.05);
+    --color-annotated-bg: rgba(31, 111, 235, 0.15);
     --color-diff-add-bg: rgba(35, 134, 54, 0.2);
     --color-diff-add-text: #7ee787;
     --color-diff-remove-bg: rgba(248, 81, 73, 0.2);
@@ -395,7 +400,7 @@
     --color-delete-text: #cf222e;
     --color-delete-hover-bg: rgba(207, 34, 46, 0.1);
     --color-annotated-border: #0969da;
-    --color-annotated-bg: rgba(9, 105, 218, 0.05);
+    --color-annotated-bg: rgba(9, 105, 218, 0.12);
     --color-diff-add-bg: rgba(26, 127, 55, 0.15);
     --color-diff-add-text: #116329;
     --color-diff-remove-bg: rgba(207, 34, 46, 0.15);

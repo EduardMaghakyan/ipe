@@ -1,37 +1,24 @@
-export interface Annotation {
+export interface AnnotatableUnit {
   id: string;
-  blockId: string;
+  type:
+    | "heading"
+    | "paragraph"
+    | "list-item"
+    | "code-line"
+    | "table-row"
+    | "blockquote"
+    | "other";
+  rawText: string;
+  sourceStartLine: number;
+  sourceEndLine: number;
+}
+
+export interface UnitAnnotation {
+  id: string;
+  startUnitId: string;
+  endUnitId: string;
   selectedText: string;
   comment: string;
-}
-
-export interface LineAnnotation {
-  id: string;
-  startLine: number;
-  endLine: number;
-  selectedText: string;
-  comment: string;
-}
-
-export interface Block {
-  id: string;
-  type: "heading" | "paragraph" | "code" | "list" | "table" | "blockquote";
-  content: string;
-  raw: string;
-  listStart?: number;
-  startLine: number;
-  endLine: number;
-}
-
-export interface PlanLine {
-  lineNumber: number;
-  blockId: string;
-  blockType: Block["type"] | "blank";
-  html: string;
-  raw: string;
-  blockPosition: "only" | "first" | "middle" | "last";
-  isFence?: boolean;
-  isBlank?: boolean;
 }
 
 export interface SessionSummary {

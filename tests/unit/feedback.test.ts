@@ -1,13 +1,13 @@
 import { describe, test, expect } from "bun:test";
 import { formatFeedback } from "../../packages/ui/src/utils/feedback";
-import type { LineAnnotation } from "../../packages/ui/src/types";
+import type { UnitAnnotation } from "../../packages/ui/src/types";
 
 function makeAnnotation(
-  overrides: Partial<LineAnnotation> & { id: string },
-): LineAnnotation {
+  overrides: Partial<UnitAnnotation> & { id: string },
+): UnitAnnotation {
   return {
-    startLine: 1,
-    endLine: 1,
+    startUnitId: "u-0",
+    endUnitId: "u-0",
     selectedText: "",
     comment: "",
     ...overrides,
@@ -28,7 +28,7 @@ describe("formatFeedback", () => {
   });
 
   test("annotations with selectedText", () => {
-    const annotations: LineAnnotation[] = [
+    const annotations: UnitAnnotation[] = [
       makeAnnotation({
         id: "1",
         selectedText: "some code",
@@ -42,7 +42,7 @@ describe("formatFeedback", () => {
 
   test("selectedText is truncated at 100 chars", () => {
     const longText = "a".repeat(150);
-    const annotations: LineAnnotation[] = [
+    const annotations: UnitAnnotation[] = [
       makeAnnotation({
         id: "1",
         selectedText: longText,
@@ -54,36 +54,21 @@ describe("formatFeedback", () => {
     expect(result).not.toContain("a".repeat(101));
   });
 
-  test("annotation without selectedText shows line comment", () => {
-    const annotations: LineAnnotation[] = [
+  test("annotation without selectedText shows generic feedback header", () => {
+    const annotations: UnitAnnotation[] = [
       makeAnnotation({
         id: "1",
-        startLine: 5,
-        endLine: 5,
         selectedText: "",
         comment: "General note",
       }),
     ];
     const result = formatFeedback(annotations);
-    expect(result).toContain("Comment on line 5");
-  });
-
-  test("annotation without selectedText shows line range comment", () => {
-    const annotations: LineAnnotation[] = [
-      makeAnnotation({
-        id: "1",
-        startLine: 5,
-        endLine: 10,
-        selectedText: "",
-        comment: "Range note",
-      }),
-    ];
-    const result = formatFeedback(annotations);
-    expect(result).toContain("Comment on lines 5-10");
+    expect(result).toContain('Feedback on: ""');
+    expect(result).toContain("> General note");
   });
 
   test("general comment is prepended before annotations", () => {
-    const annotations: LineAnnotation[] = [
+    const annotations: UnitAnnotation[] = [
       makeAnnotation({ id: "1", selectedText: "x", comment: "note" }),
     ];
     const result = formatFeedback(annotations, "Overall looks good");
@@ -93,7 +78,7 @@ describe("formatFeedback", () => {
   });
 
   test("multiple annotations are numbered", () => {
-    const annotations: LineAnnotation[] = [
+    const annotations: UnitAnnotation[] = [
       makeAnnotation({ id: "1", selectedText: "a", comment: "first" }),
       makeAnnotation({ id: "2", selectedText: "b", comment: "second" }),
     ];

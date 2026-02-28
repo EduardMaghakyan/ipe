@@ -6,6 +6,9 @@
     "dev": "vite dev",
     "build": "vite build"
   },
+  "dependencies": {
+    "marked": "^15.0.0"
+  },
   "devDependencies": {
     "@shikijs/engine-javascript": "^3.22.0",
     "@shikijs/langs": "^3.22.0",

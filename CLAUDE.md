@@ -54,7 +54,7 @@ stdin JSON → `readStdin()` → lock check → server owner or client path → 
 
 ## Conventions
 
-- The markdown parser in `utils/parser.ts` is hand-rolled (no external dependency) — extend it rather than replacing it.
+- Markdown rendering uses `marked` (via `utils/markedRenderer.ts`) with a custom renderer that injects `data-unit-id` attributes for annotation mapping. The renderer produces `{ html, units, title }` where `units` are annotatable semantic elements (headings, paragraphs, list items, code lines, table rows, blockquotes).
 - The diff engine in `utils/diff.ts` uses LCS — keep it dependency-free.
 - Lock file operations in `packages/server/lock.ts` use atomic rename (write to `.tmp` then `renameSync`).
 - UI state is per-session via a `Map<sessionId, SessionUIState>` with save/restore on tab switching.
