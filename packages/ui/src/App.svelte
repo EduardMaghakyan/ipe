@@ -238,7 +238,8 @@
   });
 
   let activeCommentCount = $derived(
-    annotations.filter((a) => a.comment.trim()).length,
+    annotations.filter((a) => a.comment.trim()).length +
+      (generalComment.trim() ? 1 : 0),
   );
 
   function addAnnotation(annotation: UnitAnnotation) {
@@ -321,8 +322,9 @@
     onCompare={() => (showDiff = true)}
     {diffOnly}
     onToggleDiffOnly={() => (diffOnly = !diffOnly)}
-    onApprove={() => submitDecision("approve")}
-    onDeny={() => submitDecision("deny")}
+    {generalComment}
+    onCommentChange={(c) => { generalComment = c; }}
+    onSubmit={(action, comment) => { generalComment = comment; submitDecision(action); }}
   />
   <main class="main">
     <PlanViewer
@@ -337,14 +339,6 @@
       onRemoveAnnotation={removeAnnotation}
       onUpdateAnnotation={updateAnnotation}
     />
-    <div class="general-comment">
-      <div class="general-comment-header">General feedback</div>
-      <textarea
-        class="general-comment-input"
-        bind:value={generalComment}
-        placeholder="Leave general feedback about the overall plan..."
-      ></textarea>
-    </div>
   </main>
 {/if}
 
@@ -459,31 +453,5 @@
     max-width: 860px;
     margin: 0 auto;
     padding: 80px 24px 48px;
-  }
-  .general-comment {
-    margin-top: 32px;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    overflow: hidden;
-  }
-  .general-comment-header {
-    padding: 8px 12px;
-    background: var(--color-bg-subtle);
-    border-bottom: 1px solid var(--color-border);
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--color-text-muted);
-  }
-  .general-comment-input {
-    width: 100%;
-    min-height: 80px;
-    padding: 12px;
-    background: transparent;
-    border: none;
-    color: var(--color-text-default);
-    font-family: inherit;
-    font-size: 0.875rem;
-    resize: vertical;
-    outline: none;
   }
 </style>

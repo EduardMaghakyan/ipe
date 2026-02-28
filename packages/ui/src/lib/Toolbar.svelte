@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { SessionSummary } from "../types";
+  import ReviewDropdown from "./ReviewDropdown.svelte";
 
   interface Props {
     title: string;
@@ -17,8 +18,9 @@
     diffOnly: boolean;
     onToggleDiffOnly: () => void;
     submitting: boolean;
-    onApprove: () => void;
-    onDeny: () => void;
+    generalComment: string;
+    onCommentChange: (comment: string) => void;
+    onSubmit: (action: "approve" | "deny", generalComment: string) => void;
   }
 
   let {
@@ -37,8 +39,9 @@
     diffOnly,
     onToggleDiffOnly,
     submitting,
-    onApprove,
-    onDeny,
+    generalComment,
+    onCommentChange,
+    onSubmit,
   }: Props = $props();
 
   let multiSession = $derived(sessions.length > 1);
@@ -131,12 +134,13 @@
       >
       <button class="btn btn-compare" onclick={onCompare}>Compare</button>
     {/if}
-    <button class="btn btn-deny" onclick={onDeny} disabled={submitting}
-      >{activeCommentCount > 0 ? "Request Changes" : "Reject"}</button
-    >
-    <button class="btn btn-approve" onclick={onApprove} disabled={submitting}
-      >Accept</button
-    >
+    <ReviewDropdown
+      {generalComment}
+      {activeCommentCount}
+      {submitting}
+      {onSubmit}
+      {onCommentChange}
+    />
   </div>
 </header>
 
@@ -262,27 +266,6 @@
     cursor: pointer;
     transition: background 0.15s;
   }
-  .btn-approve {
-    background: var(--color-approve-bg);
-    color: #fff;
-    border-color: var(--color-approve-border);
-  }
-  .btn-approve:hover:not(:disabled) {
-    background: var(--color-approve-hover);
-  }
-  .btn-approve:disabled,
-  .btn-deny:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .btn-deny {
-    background: transparent;
-    color: var(--color-deny-text);
-    border-color: var(--color-deny-text);
-  }
-  .btn-deny:hover:not(:disabled) {
-    background: var(--color-deny-hover-bg);
-  }
   .btn-secondary {
     background: transparent;
     border: 1px solid var(--color-border);
@@ -294,12 +277,12 @@
   }
   .btn-diff-toggle {
     background: transparent;
-    border: 1px solid var(--color-border);
-    color: var(--color-text-muted);
+    border: 1px solid var(--color-text-muted);
+    color: var(--color-text-default);
   }
   .btn-diff-toggle:hover {
     background: var(--color-bg-overlay);
-    color: var(--color-text-default);
+    color: var(--color-text-emphasis);
   }
   .btn-diff-toggle.active {
     background: var(--color-accent);

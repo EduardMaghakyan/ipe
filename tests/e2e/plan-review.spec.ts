@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Plan Review", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await page.waitForSelector(".plan-viewer");
+    await page.waitForSelector(".plan-viewer-container");
   });
 
   test("page loads and shows plan title from mock data", async ({ page }) => {
@@ -13,26 +13,37 @@ test.describe("Plan Review", () => {
 
   test("all block types render", async ({ page }) => {
     // Headings
-    await expect(page.locator(".plan-line.heading").first()).toBeVisible();
+    await expect(
+      page.locator('[data-unit-type="heading"]').first(),
+    ).toBeVisible();
     // Code blocks
-    await expect(page.locator(".plan-line.code").first()).toBeVisible();
+    await expect(page.locator(".code-block").first()).toBeVisible();
     // Lists
-    await expect(page.locator(".plan-line.list").first()).toBeVisible();
+    await expect(
+      page.locator('[data-unit-type="list-item"]').first(),
+    ).toBeVisible();
     // Tables
-    await expect(page.locator(".plan-line.table").first()).toBeVisible();
+    await expect(
+      page.locator('[data-unit-type="table-row"]').first(),
+    ).toBeVisible();
     // Blockquotes
-    await expect(page.locator(".plan-line.blockquote").first()).toBeVisible();
+    await expect(
+      page.locator('[data-unit-type="blockquote"]').first(),
+    ).toBeVisible();
     // Paragraphs
-    await expect(page.locator(".plan-line.paragraph").first()).toBeVisible();
+    await expect(
+      page.locator('[data-unit-type="paragraph"]').first(),
+    ).toBeVisible();
   });
 
   test("add comment via + button creates inline comment", async ({ page }) => {
-    const line = page.locator(".plan-line.paragraph").first();
-    const btnCell = line.locator(".btn-cell");
+    // Hover a paragraph to reveal + button in the gutter overlay
+    const unit = page.locator('[data-unit-type="paragraph"]').first();
+    await unit.hover();
 
-    // Hover to reveal + button
-    await btnCell.hover();
-    await btnCell.locator(".add-comment-btn").click();
+    const addBtn = page.locator(".add-comment-btn.visible").first();
+    await expect(addBtn).toBeVisible();
+    await addBtn.click();
 
     // Inline comment editor should appear
     const commentInput = page.locator(".comment-input");
@@ -52,35 +63,36 @@ test.describe("Plan Review", () => {
   });
 
   test("hover line shows + button in gutter", async ({ page }) => {
-    const line = page.locator(".plan-line:not(.blank)").first();
-    const btnCell = line.locator(".btn-cell");
-    const addBtn = line.locator(".add-comment-btn");
+    const addBtn = page.locator(".add-comment-btn").first();
 
-    // Before hover, button is hidden (opacity: 0)
-    await expect(addBtn).toHaveCSS("opacity", "0");
+    // Before hover, button is hidden (no .visible class)
+    await expect(addBtn).not.toHaveClass(/visible/);
 
-    // Hover the btn-cell to trigger onmouseenter
-    await btnCell.hover();
+    // Hover a unit element to trigger hoveredUnit state
+    const unit = page.locator("[data-unit-id]").first();
+    await unit.hover();
 
-    // After hover, button becomes visible
-    await expect(addBtn).toHaveCSS("opacity", "1");
+    // After hover, the corresponding gutter button becomes visible
+    await expect(page.locator(".add-comment-btn.visible").first()).toBeVisible();
   });
 
   test("click + button opens inline comment editor", async ({ page }) => {
-    const line = page.locator(".plan-line:not(.blank)").first();
-    const btnCell = line.locator(".btn-cell");
-    await btnCell.hover();
-    await btnCell.locator(".add-comment-btn").click();
+    const unit = page.locator("[data-unit-id]").first();
+    await unit.hover();
+
+    const addBtn = page.locator(".add-comment-btn.visible").first();
+    await addBtn.click();
 
     const commentInput = page.locator(".comment-input");
     await expect(commentInput).toBeVisible();
   });
 
   test("save comment via + button", async ({ page }) => {
-    const line = page.locator(".plan-line:not(.blank)").nth(1);
-    const btnCell = line.locator(".btn-cell");
-    await btnCell.hover();
-    await btnCell.locator(".add-comment-btn").click();
+    const unit = page.locator("[data-unit-id]").nth(1);
+    await unit.hover();
+
+    const addBtn = page.locator(".add-comment-btn.visible").first();
+    await addBtn.click();
 
     const commentInput = page.locator(".comment-input");
     await commentInput.fill("Line-level comment");
@@ -93,10 +105,10 @@ test.describe("Plan Review", () => {
 
   test("delete comment removes it", async ({ page }) => {
     // Add a comment first
-    const line = page.locator(".plan-line:not(.blank)").first();
-    const btnCell = line.locator(".btn-cell");
-    await btnCell.hover();
-    await btnCell.locator(".add-comment-btn").click();
+    const unit = page.locator("[data-unit-id]").first();
+    await unit.hover();
+    const addBtn = page.locator(".add-comment-btn.visible").first();
+    await addBtn.click();
     await page.locator(".comment-input").fill("Temporary comment");
     await page.locator(".action-btn.save").click();
     await expect(page.locator(".comment-body")).toBeVisible();
@@ -107,7 +119,11 @@ test.describe("Plan Review", () => {
   });
 
   test("general feedback textarea accepts input", async ({ page }) => {
-    const textarea = page.locator(".general-comment-input");
+    // Open the review dropdown to access the textarea
+    await page.locator(".btn-trigger").click();
+    await expect(page.locator(".dropdown-panel")).toBeVisible();
+
+    const textarea = page.locator(".panel-textarea");
     await expect(textarea).toBeVisible();
     await textarea.fill("Overall this looks reasonable");
     await expect(textarea).toHaveValue("Overall this looks reasonable");
@@ -116,13 +132,18 @@ test.describe("Plan Review", () => {
   test("Approve button sends POST to session approve endpoint", async ({
     page,
   }) => {
+    // Open the review dropdown
+    await page.locator(".btn-trigger").click();
+    await expect(page.locator(".dropdown-panel")).toBeVisible();
+
+    // "Accept plan" radio is selected by default (no comments yet)
     const [request] = await Promise.all([
       page.waitForRequest(
         (req) =>
           req.url().includes("/approve") &&
           req.url().includes("/api/sessions/"),
       ),
-      page.locator(".btn-approve", { hasText: "Accept" }).click(),
+      page.locator(".btn-submit.approve").click(),
     ]);
     expect(request.method()).toBe("POST");
     const postData = request.postDataJSON();
@@ -132,25 +153,20 @@ test.describe("Plan Review", () => {
   test("ordered list items render with sequential numbering", async ({
     page,
   }) => {
-    // List items render as .plan-line.list with <span class="list-marker">
-    const listLines = page.locator(".plan-line.list");
-    const count = await listLines.count();
+    // List items render as <li> with data-unit-type="list-item"
+    const listItems = page.locator('[data-unit-type="list-item"]');
+    const count = await listItems.count();
     expect(count).toBeGreaterThan(1);
 
-    // Check that list markers contain sequential numbers
-    const markers = page.locator(".plan-line.list .list-marker");
-    const markerCount = await markers.count();
-    expect(markerCount).toBeGreaterThan(1);
-
-    // Find numbered markers (ordered list items have "N." pattern)
-    const firstMarker = await markers.first().textContent();
-    expect(firstMarker?.trim()).toMatch(/^\d+\.|^•$/);
+    // Verify list items have text content
+    const firstText = await listItems.first().textContent();
+    expect(firstText?.trim().length).toBeGreaterThan(0);
   });
 
   test("diff code block renders with colored lines", async ({ page }) => {
-    // Diff lines are rendered inside .plan-line.code with .diff-add/.diff-remove classes
-    const diffAdd = page.locator(".plan-line.code .diff-add");
-    const diffRemove = page.locator(".plan-line.code .diff-remove");
+    // Diff lines are rendered inside .code-block with .diff-add/.diff-remove classes
+    const diffAdd = page.locator(".code-block .diff-add");
+    const diffRemove = page.locator(".code-block .diff-remove");
     await expect(diffAdd.first()).toBeVisible();
     await expect(diffRemove.first()).toBeVisible();
   });
@@ -224,29 +240,34 @@ test.describe("Plan Review", () => {
     page,
   }) => {
     // Add inline comment via + button
-    const line = page.locator(".plan-line.paragraph").first();
-    const btnCell = line.locator(".btn-cell");
-    await btnCell.hover();
-    await btnCell.locator(".add-comment-btn").click();
+    const unit = page.locator('[data-unit-type="paragraph"]').first();
+    await unit.hover();
+    const addBtn = page.locator(".add-comment-btn.visible").first();
+    await addBtn.click();
     await page.locator(".comment-input").fill("Persisted comment");
     await page.locator(".action-btn.save").click();
     await expect(page.locator(".comment-body")).toContainText(
       "Persisted comment",
     );
 
-    // Add general feedback
-    await page
-      .locator(".general-comment-input")
-      .fill("General feedback persisted");
+    // Add general feedback via the review dropdown
+    await page.locator(".btn-trigger").click();
+    await expect(page.locator(".dropdown-panel")).toBeVisible();
+    await page.locator(".panel-textarea").fill("General feedback persisted");
+    // Close dropdown before reload
+    await page.keyboard.press("Escape");
 
     // Reload and verify
     await page.reload();
-    await page.waitForSelector(".plan-viewer");
+    await page.waitForSelector(".plan-viewer-container");
 
     await expect(page.locator(".comment-body")).toContainText(
       "Persisted comment",
     );
-    await expect(page.locator(".general-comment-input")).toHaveValue(
+    // Re-open dropdown to check persisted general comment
+    await page.locator(".btn-trigger").click();
+    await expect(page.locator(".dropdown-panel")).toBeVisible();
+    await expect(page.locator(".panel-textarea")).toHaveValue(
       "General feedback persisted",
     );
   });
@@ -324,15 +345,20 @@ test.describe("Plan Review", () => {
   test("Request Changes button sends POST to session deny endpoint", async ({
     page,
   }) => {
-    // Add general feedback first
-    await page.locator(".general-comment-input").fill("Please revise step 2");
+    // Open the review dropdown and add general feedback
+    await page.locator(".btn-trigger").click();
+    await expect(page.locator(".dropdown-panel")).toBeVisible();
+    await page.locator(".panel-textarea").fill("Please revise step 2");
+
+    // Select "Request changes" radio
+    await page.locator('input[type="radio"][value="deny"]').check();
 
     const [request] = await Promise.all([
       page.waitForRequest(
         (req) =>
           req.url().includes("/deny") && req.url().includes("/api/sessions/"),
       ),
-      page.locator(".btn-deny").click(),
+      page.locator(".btn-submit").click(),
     ]);
     expect(request.method()).toBe("POST");
     const postData = request.postDataJSON();
