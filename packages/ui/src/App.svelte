@@ -180,30 +180,39 @@
       })
       .catch(() => {});
 
-    fetch("/api/sessions")
-      .then((r) => r.json())
-      .then((list: SessionSummary[]) => {
-        for (const s of list) {
-          addSessionToUI(s);
-        }
-        loading = false;
-
-        es = new EventSource("/api/events");
-        es.addEventListener("session-added", (e) => {
-          const s = JSON.parse(e.data) as SessionSummary;
-          if (!sessions.find((x) => x.sessionId === s.sessionId)) {
+    async function loadSessions(retries = 3): Promise<void> {
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          const r = await fetch("/api/sessions");
+          const list: SessionSummary[] = await r.json();
+          for (const s of list) {
             addSessionToUI(s);
           }
-        });
-        es.addEventListener("session-removed", (e) => {
-          const { sessionId } = JSON.parse(e.data) as { sessionId: string };
-          removeSessionFromUI(sessionId);
-        });
-      })
-      .catch(() => {
-        loadError = "Failed to load sessions. Please refresh.";
-        loading = false;
-      });
+          loading = false;
+
+          es = new EventSource("/api/events");
+          es.addEventListener("session-added", (e) => {
+            const s = JSON.parse(e.data) as SessionSummary;
+            if (!sessions.find((x) => x.sessionId === s.sessionId)) {
+              addSessionToUI(s);
+            }
+          });
+          es.addEventListener("session-removed", (e) => {
+            const { sessionId } = JSON.parse(e.data) as { sessionId: string };
+            removeSessionFromUI(sessionId);
+          });
+          return;
+        } catch (err) {
+          console.error(`Failed to load sessions (attempt ${attempt}/${retries}):`, err);
+          if (attempt < retries) {
+            await new Promise((r) => setTimeout(r, 500));
+          }
+        }
+      }
+      loadError = "Failed to load sessions. Please refresh.";
+      loading = false;
+    }
+    loadSessions();
 
     return () => {
       es?.close();
