@@ -57,11 +57,7 @@
 <svelte:window onclick={handleClickOutside} onkeydown={handleKeydown} />
 
 <div class="review-dropdown" bind:this={dropdownEl}>
-  <button
-    class="btn-trigger"
-    onclick={toggle}
-    disabled={submitting}
-  >
+  <button class="btn-trigger" onclick={toggle} disabled={submitting}>
     Submit review
     {#if activeCommentCount > 0}
       <span class="trigger-badge">{activeCommentCount}</span>

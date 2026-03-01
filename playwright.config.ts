@@ -5,7 +5,7 @@ export default defineConfig({
   timeout: 30_000,
   retries: 0,
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: "http://localhost:5174",
     headless: true,
   },
   projects: [
@@ -15,10 +15,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "bun run dev",
+    command: "bun run dev -- --port 5174",
     cwd: "packages/ui",
-    url: "http://localhost:5173",
-    reuseExistingServer: !process.env.CI,
+    url: "http://localhost:5174",
+    reuseExistingServer: false,
     timeout: 15_000,
   },
 });

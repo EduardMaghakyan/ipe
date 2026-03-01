@@ -175,9 +175,7 @@ describe("renderPlan", () => {
     expect(result.html).toContain(`<!-- unit-end:${lastId} -->`);
     // No unit-end markers for non-last code lines
     for (let i = 0; i < codeLines.length - 1; i++) {
-      expect(result.html).not.toContain(
-        `<!-- unit-end:${codeLines[i].id} -->`,
-      );
+      expect(result.html).not.toContain(`<!-- unit-end:${codeLines[i].id} -->`);
     }
   });
 

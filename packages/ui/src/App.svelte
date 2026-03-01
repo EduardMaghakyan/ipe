@@ -215,7 +215,10 @@
           });
           return;
         } catch (err) {
-          console.error(`Failed to load sessions (attempt ${attempt}/${retries}):`, err);
+          console.error(
+            `Failed to load sessions (attempt ${attempt}/${retries}):`,
+            err,
+          );
           if (attempt < retries) {
             await new Promise((r) => setTimeout(r, 500));
           }
@@ -344,8 +347,13 @@
     {diffOnly}
     onToggleDiffOnly={() => (diffOnly = !diffOnly)}
     {generalComment}
-    onCommentChange={(c) => { generalComment = c; }}
-    onSubmit={(action, comment) => { generalComment = comment; submitDecision(action); }}
+    onCommentChange={(c) => {
+      generalComment = c;
+    }}
+    onSubmit={(action, comment) => {
+      generalComment = comment;
+      submitDecision(action);
+    }}
   />
   <main class="main">
     <PlanViewer

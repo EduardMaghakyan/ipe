@@ -73,7 +73,9 @@ test.describe("Plan Review", () => {
     await unit.hover();
 
     // After hover, the corresponding gutter button becomes visible
-    await expect(page.locator(".add-comment-btn.visible").first()).toBeVisible();
+    await expect(
+      page.locator(".add-comment-btn.visible").first(),
+    ).toBeVisible();
   });
 
   test("click + button opens inline comment editor", async ({ page }) => {
