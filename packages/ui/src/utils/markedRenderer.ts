@@ -101,7 +101,7 @@ export function renderPlan(
     const id = nextUnitId();
     const startLine = findSourceLine(item.raw);
     const lineCount = item.raw.trim().split("\n").length;
-    const text = this.parser.parseInline(item.tokens);
+    const text = this.parser.parse(item.tokens);
     units.push({
       id,
       type: "list-item",

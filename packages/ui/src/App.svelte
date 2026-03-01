@@ -131,7 +131,18 @@
   function addSessionToUI(s: SessionSummary) {
     const saved = loadDraft(s.sessionId);
     const paths = new Set(s.fileSnippets?.map((f) => f.path) ?? []);
-    const result = renderPlan(s.plan, paths);
+    let result: ReturnType<typeof renderPlan>;
+    try {
+      result = renderPlan(s.plan, paths);
+    } catch (err) {
+      console.error("renderPlan failed, using fallback:", err);
+      result = {
+        html: `<pre>${s.plan.replace(/</g, "&lt;")}</pre>`,
+        units: [],
+        title: "Plan Review",
+        codeBlockMap: new Map(),
+      };
+    }
     sessions = [...sessions, s];
     sessionUIStates.set(s.sessionId, {
       annotations: saved?.annotations ?? [],
@@ -184,6 +195,7 @@
       for (let attempt = 1; attempt <= retries; attempt++) {
         try {
           const r = await fetch("/api/sessions");
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
           const list: SessionSummary[] = await r.json();
           for (const s of list) {
             addSessionToUI(s);
