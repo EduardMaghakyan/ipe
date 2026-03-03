@@ -28,6 +28,8 @@ export interface SessionSummary {
   permissionMode: string;
   previousPlans: PlanVersion[];
   fileSnippets?: FileSnippet[];
+  mode?: "plan" | "diff-review";
+  fileDiffs?: FileDiff[];
   registeredAt: number;
 }
 
@@ -43,4 +45,35 @@ export interface FileSnippet {
   endLine?: number;
   content: string;
   error?: string;
+}
+
+// Diff review types
+
+export interface DiffHunkLine {
+  type: "add" | "remove" | "context";
+  content: string;
+  oldLineNo?: number;
+  newLineNo?: number;
+}
+
+export interface DiffHunk {
+  header: string;
+  lines: DiffHunkLine[];
+}
+
+export interface FileDiff {
+  oldPath: string;
+  newPath: string;
+  status: "modified" | "added" | "deleted" | "renamed";
+  hunks: DiffHunk[];
+}
+
+export interface DiffAnnotation {
+  id: string;
+  filePath: string;
+  lineKey: string; // unique key for the diff line (e.g. "hunk-0-line-5")
+  startLineKey: string;
+  endLineKey: string;
+  selectedText: string;
+  comment: string;
 }

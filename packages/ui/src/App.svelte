@@ -13,6 +13,7 @@
   import Toolbar from "./lib/Toolbar.svelte";
   import PlanViewer from "./lib/PlanViewer.svelte";
   import DiffOverlay from "./lib/DiffOverlay.svelte";
+  import DiffReviewApp from "./lib/DiffReviewApp.svelte";
 
   interface SessionUIState {
     annotations: UnitAnnotation[];
@@ -237,6 +238,7 @@
   let activeSession = $derived(
     sessions.find((s) => s.sessionId === activeSessionId) ?? null,
   );
+  let isDiffReview = $derived(activeSession?.mode === "diff-review");
   let versions = $derived(activeSession?.previousPlans ?? []);
 
   let inlineDiffLines = $derived.by<CollapsedDiffItem[] | null>(() => {
@@ -315,6 +317,8 @@
   <div class="loading">Submitting...</div>
 {:else if !activeSession}
   <div class="loading">No pending plans.</div>
+{:else if isDiffReview}
+  <DiffReviewApp session={activeSession} {theme} onToggleTheme={toggleTheme} />
 {:else}
   {#if error}
     <div class="error-banner" role="alert">

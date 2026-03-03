@@ -5,6 +5,7 @@
     submitting: boolean;
     onSubmit: (action: "approve" | "deny", generalComment: string) => void;
     onCommentChange: (comment: string) => void;
+    approveLabel?: string;
   }
 
   let {
@@ -13,6 +14,7 @@
     submitting,
     onSubmit,
     onCommentChange,
+    approveLabel = "Accept plan",
   }: Props = $props();
 
   let open = $state(false);
@@ -86,7 +88,7 @@
       <div class="radio-group">
         <label class="radio-option">
           <input type="radio" bind:group={action} value="approve" />
-          <span class="radio-label">Accept plan</span>
+          <span class="radio-label">{approveLabel}</span>
         </label>
         <label class="radio-option">
           <input type="radio" bind:group={action} value="deny" />
@@ -100,7 +102,7 @@
         disabled={submitting}
         onclick={() => onSubmit(action, generalComment)}
       >
-        {action === "approve" ? "Accept plan" : "Request changes"}
+        {action === "approve" ? approveLabel : "Request changes"}
       </button>
     </div>
   {/if}
