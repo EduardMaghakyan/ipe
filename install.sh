@@ -19,6 +19,23 @@ error() { echo -e "${RED}==>${NC} $1"; exit 1; }
 command -v curl >/dev/null 2>&1 || error "curl is required but not installed."
 command -v python3 >/dev/null 2>&1 || error "python3 is required but not installed."
 
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --version|-v) IPE_VERSION="$2"; shift 2 ;;
+    *) error "Unknown argument: $1" ;;
+  esac
+done
+
+# Self-redirect: re-fetch install.sh from the target version's branch/tag
+if [ -n "${IPE_VERSION:-}" ] && [ -z "${_IPE_REDIRECTED:-}" ]; then
+  info "Fetching installer for version: $IPE_VERSION..."
+  export _IPE_REDIRECTED=1
+  export IPE_VERSION
+  curl -fsSL "https://raw.githubusercontent.com/$REPO/$IPE_VERSION/install.sh" | bash -s -- --version "$IPE_VERSION"
+  exit $?
+fi
+
 # Detect platform
 OS="$(uname -s)"
 ARCH="$(uname -m)"

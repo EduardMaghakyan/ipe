@@ -36,7 +36,7 @@ To pin a specific version:
 
 ```sh
 # macOS / Linux
-IPE_VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash -s -- --version v0.1.0
 
 # Windows (PowerShell)
 $env:IPE_VERSION="v0.1.0"; irm https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.ps1 | iex
