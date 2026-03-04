@@ -1,12 +1,15 @@
 # IPE
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/EduardMaghakyan/ipe)](https://github.com/EduardMaghakyan/ipe/releases)
+
 Review Claude Code plans and code diffs in a browser UI with inline comments, like a GitHub PR review.
 
 ![demo](https://github.com/user-attachments/assets/096b1f86-eba8-4b66-b99e-2808fea4e00f)
 
 ## Features
 
-- **GitHub-style code review** — inline comments on any block or text selection, approve or request changes
+- **GitHub-style plan review** — inline comments on any block or text selection, approve or request changes
 - **File snippet preview** — click any backtick-wrapped file reference (e.g. `` `src/index.ts` ``) to open a resizable side drawer with syntax-highlighted source code
 - **Plan version diff** — compare current plan against previous versions with side-by-side or inline views
 - **Multi-session support** — multiple concurrent Claude Code sessions share one server, switch between plans via tabs
