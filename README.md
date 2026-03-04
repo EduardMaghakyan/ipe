@@ -2,7 +2,6 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/EduardMaghakyan/ipe)](https://github.com/EduardMaghakyan/ipe/releases)
-[![GitHub stars](https://img.shields.io/github/stars/EduardMaghakyan/ipe)](https://github.com/EduardMaghakyan/ipe/stargazers)
 
 Review Claude Code plans in a browser UI with inline comments, like a GitHub PR review.
 
@@ -10,7 +9,7 @@ Review Claude Code plans in a browser UI with inline comments, like a GitHub PR 
 
 ## Features
 
-- **GitHub-style code review** — inline comments on any block or text selection, approve or request changes
+- **GitHub-style plan review** — inline comments on any block or text selection, approve or request changes
 - **File snippet preview** — click any backtick-wrapped file reference (e.g. `` `src/index.ts` ``) to open a resizable side drawer with syntax-highlighted source code
 - **Plan version diff** — compare current plan against previous versions with side-by-side or inline views
 - **Multi-session support** — multiple concurrent Claude Code sessions share one server, switch between plans via tabs
