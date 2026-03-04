@@ -13,9 +13,15 @@ test.describe("Diff Review", () => {
     await expect(page.locator(".toolbar-title")).toContainText("Diff Review");
 
     // Diff mode toggle buttons are visible
-    await expect(page.locator("button.mode-btn", { hasText: /^Unstaged$/ })).toBeVisible();
-    await expect(page.locator("button.mode-btn", { hasText: /^Staged$/ })).toBeVisible();
-    await expect(page.locator("button.mode-btn", { hasText: /^All$/ })).toBeVisible();
+    await expect(
+      page.locator("button.mode-btn", { hasText: /^Unstaged$/ }),
+    ).toBeVisible();
+    await expect(
+      page.locator("button.mode-btn", { hasText: /^Staged$/ }),
+    ).toBeVisible();
+    await expect(
+      page.locator("button.mode-btn", { hasText: /^All$/ }),
+    ).toBeVisible();
 
     // "Unstaged" is active by default
     await expect(

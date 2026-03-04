@@ -456,9 +456,7 @@ describe("diff-review hook", () => {
     expect(buffer).toContain("mode=staged");
 
     // Clean up by approving
-    const sessRes = await fetch(
-      `http://localhost:${serverPort}/api/sessions`,
-    );
+    const sessRes = await fetch(`http://localhost:${serverPort}/api/sessions`);
     const sessions = await sessRes.json();
     await fetch(
       `http://localhost:${serverPort}/api/sessions/${sessions[0].sessionId}/approve`,
@@ -490,14 +488,11 @@ describe("diff-review hook", () => {
     const sessions = await sessRes.json();
     const sessionId = sessions[0].sessionId;
 
-    await fetch(
-      `http://localhost:${port}/api/sessions/${sessionId}/approve`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ feedback: "Looks good" }),
-      },
-    );
+    await fetch(`http://localhost:${port}/api/sessions/${sessionId}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback: "Looks good" }),
+    });
 
     await Promise.race([
       proc.exited,
