@@ -1,5 +1,12 @@
 {
   "name": "ipe",
+  "description": "GitHub-style plan review for Claude Code",
+  "author": "Eduard Maghakyan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EduardMaghakyan/ipe"
+  },
   "private": true,
   "workspaces": [
     "packages/*",

@@ -1,5 +1,9 @@
 # IPE
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/EduardMaghakyan/ipe)](https://github.com/EduardMaghakyan/ipe/releases)
+[![GitHub stars](https://img.shields.io/github/stars/EduardMaghakyan/ipe)](https://github.com/EduardMaghakyan/ipe/stargazers)
+
 Review Claude Code plans in a browser UI with inline comments, like a GitHub PR review.
 
 ![demo](https://github.com/user-attachments/assets/096b1f86-eba8-4b66-b99e-2808fea4e00f)
