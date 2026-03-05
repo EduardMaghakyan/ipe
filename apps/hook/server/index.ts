@@ -12,6 +12,12 @@ import {
   parseUnifiedDiff,
   type DiffMode,
 } from "../../../packages/server/git-diff.ts";
+import {
+  readLock,
+  writeLock,
+  removeLock,
+  isProcessAlive,
+} from "../../../packages/server/lock.ts";
 
 const VERSION = "dev";
 const DEFAULT_PORT = 19450;
@@ -109,10 +115,27 @@ async function findOrStartServer(
 }> {
   const basePort = getBasePort();
 
+  // Check lock file for an existing server
+  const lock = readLock();
+  if (lock) {
+    if (isProcessAlive(lock.pid)) {
+      // Process is alive — try to join it
+      if (await isIPEServer(lock.port)) {
+        return { server: null, port: lock.port };
+      }
+      // Process alive but not responding as IPE server — fall through to port scan
+    } else {
+      // Stale lock — previous server crashed
+      console.error(`IPE: removing stale lock (pid ${lock.pid} is dead)`);
+      removeLock();
+    }
+  }
+
   for (let i = 0; i < PORT_RANGE; i++) {
     const port = basePort + i;
     const server = tryStartServer(port, version, latestVersion);
     if (server) {
+      writeLock(port);
       return { server, port };
     }
     // Port taken — check if it's an IPE server we can join
@@ -267,6 +290,14 @@ async function main() {
 
   if (server) {
     // We're the server owner
+    const cleanup = () => {
+      removeLock();
+      server.stop();
+      process.exit(0);
+    };
+    process.on("SIGINT", cleanup);
+    process.on("SIGTERM", cleanup);
+
     const decisionPromise = server.addSession({
       sessionId,
       plan,
@@ -285,6 +316,7 @@ async function main() {
     await server.waitForDrain();
     // Grace period: allow in-flight SSE responses to be read by clients
     await new Promise((r) => setTimeout(r, 500));
+    removeLock();
     server.stop();
     setTimeout(() => process.exit(0), 50);
   } else {
@@ -383,6 +415,14 @@ async function diffReviewMain() {
   );
 
   if (server) {
+    const cleanup = () => {
+      removeLock();
+      server.stop();
+      process.exit(0);
+    };
+    process.on("SIGINT", cleanup);
+    process.on("SIGTERM", cleanup);
+
     const decisionPromise = server.addSession({
       sessionId,
       plan: "",
@@ -401,6 +441,7 @@ async function diffReviewMain() {
 
     await server.waitForDrain();
     await new Promise((r) => setTimeout(r, 500));
+    removeLock();
     server.stop();
     setTimeout(() => process.exit(0), 50);
   } else {
