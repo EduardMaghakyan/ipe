@@ -246,6 +246,13 @@
               class:visible={hoveredLineKey === line.key ||
                 dragSelectedKeys.has(line.key)}
               onmousedown={(e) => handlePlusMouseDown(e, line.key)}
+              onkeydown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handlePlusMouseDown(e as any, line.key);
+                  handleDocumentMouseUp();
+                }
+              }}
               aria-label="Add comment">+</button
             >
           </span>
@@ -360,6 +367,11 @@
     background: var(--color-accent);
     border-color: var(--color-accent);
     color: #fff;
+  }
+  .add-comment-btn:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
   .line-marker {
     width: 1em;

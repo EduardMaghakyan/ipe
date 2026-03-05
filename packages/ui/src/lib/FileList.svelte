@@ -39,17 +39,21 @@
     return parts.slice(0, -1).join("/") + "/";
   }
 
-  function lineCounts(f: FileDiff): { add: number; remove: number } {
-    let add = 0;
-    let remove = 0;
-    for (const hunk of f.hunks) {
-      for (const line of hunk.lines) {
-        if (line.type === "add") add++;
-        else if (line.type === "remove") remove++;
+  let lineCountsMap = $derived.by(() => {
+    const map: Record<string, { add: number; remove: number }> = {};
+    for (const f of files) {
+      let add = 0;
+      let remove = 0;
+      for (const hunk of f.hunks) {
+        for (const line of hunk.lines) {
+          if (line.type === "add") add++;
+          else if (line.type === "remove") remove++;
+        }
       }
+      map[filePath(f)] = { add, remove };
     }
-    return { add, remove };
-  }
+    return map;
+  });
 </script>
 
 <div class="file-list">
@@ -60,7 +64,7 @@
   <div class="file-items">
     {#each files as file (filePath(file))}
       {@const path = filePath(file)}
-      {@const counts = lineCounts(file)}
+      {@const counts = lineCountsMap[path]}
       {@const comments = commentCounts[path] ?? 0}
       <button
         class="file-item"

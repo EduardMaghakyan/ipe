@@ -274,62 +274,74 @@ rename to new.ts
 });
 
 describe("runGitDiff", () => {
-  const tmpDir = join(tmpdir(), `ipe-git-diff-test-${Date.now()}`);
-
-  afterAll(() => {
-    try {
-      rmSync(tmpDir, { recursive: true });
-    } catch {}
-  });
-
-  test("returns unstaged diff", async () => {
-    mkdirSync(tmpDir, { recursive: true });
-    // Init repo and create initial commit
+  async function initRepo(dir: string) {
+    mkdirSync(dir, { recursive: true });
     const run = (cmd: string[]) =>
-      Bun.spawn(cmd, { cwd: tmpDir, stdout: "pipe", stderr: "pipe" });
+      Bun.spawn(cmd, { cwd: dir, stdout: "pipe", stderr: "pipe" });
     await run(["git", "init"]).exited;
     await run(["git", "config", "user.email", "test@test.com"]).exited;
     await run(["git", "config", "user.name", "Test"]).exited;
-    writeFileSync(join(tmpDir, "file.txt"), "original\n");
+    writeFileSync(join(dir, "file.txt"), "original\n");
     await run(["git", "add", "."]).exited;
     await run(["git", "commit", "-m", "init"]).exited;
+    return run;
+  }
 
-    // Modify file (unstaged)
-    writeFileSync(join(tmpDir, "file.txt"), "modified\n");
+  test("returns unstaged diff", async () => {
+    const dir = join(tmpdir(), `ipe-git-diff-unstaged-${Date.now()}`);
+    try {
+      await initRepo(dir);
+      writeFileSync(join(dir, "file.txt"), "modified\n");
 
-    const result = await runGitDiff(tmpDir, "unstaged");
-    expect(result).toContain("file.txt");
-    expect(result).toContain("-original");
-    expect(result).toContain("+modified");
+      const result = await runGitDiff(dir, "unstaged");
+      expect(result).toContain("file.txt");
+      expect(result).toContain("-original");
+      expect(result).toContain("+modified");
+    } finally {
+      try { rmSync(dir, { recursive: true }); } catch {}
+    }
   });
 
   test("returns staged diff", async () => {
-    // Stage the change from previous test
-    const run = (cmd: string[]) =>
-      Bun.spawn(cmd, { cwd: tmpDir, stdout: "pipe", stderr: "pipe" });
-    await run(["git", "add", "."]).exited;
+    const dir = join(tmpdir(), `ipe-git-diff-staged-${Date.now()}`);
+    try {
+      const run = await initRepo(dir);
+      writeFileSync(join(dir, "file.txt"), "modified\n");
+      await run(["git", "add", "."]).exited;
 
-    const unstaged = await runGitDiff(tmpDir, "unstaged");
-    expect(unstaged.trim()).toBe(""); // nothing unstaged now
+      const unstaged = await runGitDiff(dir, "unstaged");
+      expect(unstaged.trim()).toBe("");
 
-    const staged = await runGitDiff(tmpDir, "staged");
-    expect(staged).toContain("file.txt");
-    expect(staged).toContain("+modified");
+      const staged = await runGitDiff(dir, "staged");
+      expect(staged).toContain("file.txt");
+      expect(staged).toContain("+modified");
+    } finally {
+      try { rmSync(dir, { recursive: true }); } catch {}
+    }
   });
 
   test("returns all diff (vs HEAD)", async () => {
-    const result = await runGitDiff(tmpDir, "all");
-    expect(result).toContain("file.txt");
-    expect(result).toContain("+modified");
+    const dir = join(tmpdir(), `ipe-git-diff-all-${Date.now()}`);
+    try {
+      const run = await initRepo(dir);
+      writeFileSync(join(dir, "file.txt"), "modified\n");
+      await run(["git", "add", "."]).exited;
+
+      const result = await runGitDiff(dir, "all");
+      expect(result).toContain("file.txt");
+      expect(result).toContain("+modified");
+    } finally {
+      try { rmSync(dir, { recursive: true }); } catch {}
+    }
   });
 
   test("throws on non-git directory", async () => {
-    const nonGitDir = join(tmpdir(), `ipe-non-git-${Date.now()}`);
-    mkdirSync(nonGitDir, { recursive: true });
+    const dir = join(tmpdir(), `ipe-non-git-${Date.now()}`);
+    mkdirSync(dir, { recursive: true });
     try {
-      await expect(runGitDiff(nonGitDir)).rejects.toThrow("git diff failed");
+      await expect(runGitDiff(dir)).rejects.toThrow("git diff failed");
     } finally {
-      rmSync(nonGitDir, { recursive: true });
+      try { rmSync(dir, { recursive: true }); } catch {}
     }
   });
 });

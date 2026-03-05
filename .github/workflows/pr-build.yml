@@ -52,7 +52,7 @@ jobs:
 
           **Install for testing:**
           \`\`\`bash
-          IPE_VERSION=${TAG} curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash
+          curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash -s -- --version ${TAG}
           \`\`\`"
 
   build:
@@ -122,7 +122,7 @@ jobs:
             --body "**PR build available for testing:**
 
           \`\`\`bash
-          IPE_VERSION=${TAG} curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash
+          curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash -s -- --version ${TAG}
           \`\`\`
 
           This pre-release will be updated on each push and cleaned up when the PR is closed."

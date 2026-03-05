@@ -480,19 +480,26 @@ describe("diff-review hook", () => {
     await initGitRepo(repoDir);
     writeFileSync(join(repoDir, "file.txt"), "approve test\n");
 
-    const { proc, port, stdout } = spawnDiffReview([], repoDir);
+    const { proc, stdout } = spawnDiffReview([], repoDir);
 
-    await waitForServer(proc.stderr as ReadableStream);
+    const { port: serverPort } = await waitForServer(
+      proc.stderr as ReadableStream,
+    );
 
-    const sessRes = await fetch(`http://localhost:${port}/api/sessions`);
+    const sessRes = await fetch(
+      `http://localhost:${serverPort}/api/sessions`,
+    );
     const sessions = await sessRes.json();
     const sessionId = sessions[0].sessionId;
 
-    await fetch(`http://localhost:${port}/api/sessions/${sessionId}/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ feedback: "Looks good" }),
-    });
+    await fetch(
+      `http://localhost:${serverPort}/api/sessions/${sessionId}/approve`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedback: "Looks good" }),
+      },
+    );
 
     await Promise.race([
       proc.exited,
@@ -512,19 +519,26 @@ describe("diff-review hook", () => {
     await initGitRepo(repoDir);
     writeFileSync(join(repoDir, "file.txt"), "deny test\n");
 
-    const { proc, port, stdout } = spawnDiffReview([], repoDir);
+    const { proc, stdout } = spawnDiffReview([], repoDir);
 
-    await waitForServer(proc.stderr as ReadableStream);
+    const { port: serverPort } = await waitForServer(
+      proc.stderr as ReadableStream,
+    );
 
-    const sessRes = await fetch(`http://localhost:${port}/api/sessions`);
+    const sessRes = await fetch(
+      `http://localhost:${serverPort}/api/sessions`,
+    );
     const sessions = await sessRes.json();
     const sessionId = sessions[0].sessionId;
 
-    await fetch(`http://localhost:${port}/api/sessions/${sessionId}/deny`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ feedback: "Fix the bug" }),
-    });
+    await fetch(
+      `http://localhost:${serverPort}/api/sessions/${sessionId}/deny`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedback: "Fix the bug" }),
+      },
+    );
 
     await Promise.race([
       proc.exited,

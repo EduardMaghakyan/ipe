@@ -284,6 +284,13 @@ export function startServer(options: ServerOptions = {}): {
               { status: 400 },
             );
           }
+          const validModes: DiffMode[] = ["unstaged", "staged", "all"];
+          if (body.mode && !validModes.includes(body.mode)) {
+            return Response.json(
+              { error: `invalid mode: ${body.mode}` },
+              { status: 400 },
+            );
+          }
           try {
             const diffMode = body.mode ?? "unstaged";
             const raw = await runGitDiff(session.cwd, diffMode);

@@ -32,7 +32,7 @@ if [ -n "${IPE_VERSION:-}" ] && [ -z "${_IPE_REDIRECTED:-}" ]; then
   info "Fetching installer for version: $IPE_VERSION..."
   export _IPE_REDIRECTED=1
   export IPE_VERSION
-  curl -fsSL "https://raw.githubusercontent.com/$REPO/$IPE_VERSION/install.sh" | bash -s -- --version "$IPE_VERSION"
+  curl -fsSL "https://raw.githubusercontent.com/$REPO/$IPE_VERSION/install.sh" | bash
   exit $?
 fi
 
