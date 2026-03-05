@@ -24,7 +24,10 @@ export function formatDiffFeedback(
 
     let counter = 1;
     for (const [filePath, fileAnns] of byFile) {
-      parts.push(`\nFile: ${filePath}`);
+      if (parts.length > 0) {
+        parts.push("");
+      }
+      parts.push(`File: ${filePath}`);
       for (const ann of fileAnns) {
         const truncated = truncateText(ann.selectedText, 100);
         parts.push(`## ${counter}. "${truncated}"`);

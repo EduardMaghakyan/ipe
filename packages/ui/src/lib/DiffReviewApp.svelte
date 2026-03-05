@@ -22,6 +22,7 @@
   let submitting = $state(false);
   let error = $state("");
   let refreshing = $state(false);
+  let hydrated = $state(false);
 
   // Select first file on load
   $effect(() => {
@@ -33,13 +34,7 @@
     }
   });
 
-  // Draft persistence
-  $effect(() => {
-    const key = `ipe-diff-draft-${session.sessionId}`;
-    localStorage.setItem(key, JSON.stringify({ annotations, generalComment }));
-  });
-
-  // Load draft on mount
+  // Load draft on mount (must run before persistence effect)
   $effect(() => {
     const key = `ipe-diff-draft-${session.sessionId}`;
     const raw = localStorage.getItem(key);
@@ -52,6 +47,14 @@
         // ignore
       }
     }
+    hydrated = true;
+  });
+
+  // Draft persistence (gated on hydrated to avoid overwriting before load)
+  $effect(() => {
+    if (!hydrated) return;
+    const key = `ipe-diff-draft-${session.sessionId}`;
+    localStorage.setItem(key, JSON.stringify({ annotations, generalComment }));
   });
 
   let selectedFileDiff = $derived(
@@ -116,6 +119,23 @@
         if (selectedFile && !paths.includes(selectedFile)) {
           selectedFile = paths[0] ?? null;
         }
+        // Prune annotations whose line keys no longer exist in the new diffs
+        // DiffViewer generates keys as h{hunkIdx}-l{lineIdx} per file
+        const validKeysByFile = new Map<string, Set<string>>();
+        for (const f of fileDiffs) {
+          const fp = f.status === "deleted" ? f.oldPath : f.newPath;
+          const keys = new Set<string>();
+          for (let hi = 0; hi < f.hunks.length; hi++) {
+            for (let li = 0; li < f.hunks[hi].lines.length; li++) {
+              keys.add(`h${hi}-l${li}`);
+            }
+          }
+          validKeysByFile.set(fp, keys);
+        }
+        annotations = annotations.filter((a) => {
+          const keys = validKeysByFile.get(a.filePath);
+          return keys && keys.has(a.startLineKey) && keys.has(a.endLineKey);
+        });
       }
     } catch (err) {
       error = `Failed to refresh diff: ${err}`;

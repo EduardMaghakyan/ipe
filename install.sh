@@ -22,7 +22,11 @@ command -v python3 >/dev/null 2>&1 || error "python3 is required but not install
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --version|-v) IPE_VERSION="$2"; shift 2 ;;
+    --version|-v)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        error "--version requires a value"
+      fi
+      IPE_VERSION="$2"; shift 2 ;;
     *) error "Unknown argument: $1" ;;
   esac
 done

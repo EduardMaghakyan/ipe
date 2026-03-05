@@ -300,6 +300,47 @@ async function main() {
   }
 }
 
+async function diffReviewClientPath(
+  port: number,
+  sessionId: string,
+  fileDiffs: ReturnType<typeof parseUnifiedDiff>,
+  cwd: string,
+): Promise<void> {
+  const res = await fetch(`http://localhost:${port}/api/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId,
+      plan: "",
+      permissionMode: "review",
+      mode: "diff-review",
+      fileDiffs,
+      cwd,
+    }),
+  });
+
+  if (!res.ok) {
+    console.error(`IPE: failed to register with server: ${res.status}`);
+    outputDecision("deny", "Failed to register with IPE server. Please retry.");
+    return;
+  }
+
+  console.error(
+    `IPE ${VERSION} registered with server at http://localhost:${port}`,
+  );
+
+  try {
+    const decision = await waitForSSEDecision(port, sessionId);
+    outputDecision(decision.behavior, decision.feedback);
+  } catch (err) {
+    console.error(`IPE: lost connection to server: ${err}`);
+    outputDecision(
+      "deny",
+      "IPE server disconnected before delivering decision. Please retry.",
+    );
+  }
+}
+
 async function diffReviewMain() {
   const drIdx = process.argv.indexOf("diff-review");
   const args = drIdx >= 0 ? process.argv.slice(drIdx + 1) : [];
@@ -315,6 +356,7 @@ async function diffReviewMain() {
     raw = await runGitDiff(cwd, diffMode);
   } catch (err) {
     console.error(`IPE: git diff failed: ${err}`);
+    outputDecision("deny", `git diff failed: ${err}`);
     process.exit(1);
   }
 
@@ -362,7 +404,7 @@ async function diffReviewMain() {
     server.stop();
     setTimeout(() => process.exit(0), 50);
   } else {
-    await clientPath(port, sessionId, "", "review", [], []);
+    await diffReviewClientPath(port, sessionId, fileDiffs, cwd);
   }
 }
 
