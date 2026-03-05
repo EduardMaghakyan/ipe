@@ -1,6 +1,8 @@
 import html from "../ui/dist/index.html" with { type: "text" };
 import type { PlanVersion } from "./history";
 import type { FileSnippet } from "./snippets";
+import type { FileDiff, DiffMode } from "./git-diff";
+import { runGitDiff, parseUnifiedDiff } from "./git-diff";
 
 const encoder = new TextEncoder();
 
@@ -10,6 +12,9 @@ export interface SessionInput {
   permissionMode: string;
   previousPlans?: PlanVersion[];
   fileSnippets?: FileSnippet[];
+  mode?: "plan" | "diff-review";
+  fileDiffs?: FileDiff[];
+  cwd?: string;
 }
 
 export interface SessionDecision {
@@ -23,6 +28,9 @@ interface SessionState {
   permissionMode: string;
   previousPlans: PlanVersion[];
   fileSnippets: FileSnippet[];
+  mode: "plan" | "diff-review";
+  fileDiffs: FileDiff[];
+  cwd?: string;
   registeredAt: number;
   resolve: (decision: SessionDecision) => void;
   hookSSE: Set<ReadableStreamDefaultController>;
@@ -43,11 +51,13 @@ function extractTitle(plan: string): string {
 function sessionToSummary(s: SessionState) {
   return {
     sessionId: s.sessionId,
-    title: extractTitle(s.plan),
+    title: s.mode === "diff-review" ? "Diff Review" : extractTitle(s.plan),
     plan: s.plan,
     permissionMode: s.permissionMode,
     previousPlans: s.previousPlans,
     fileSnippets: s.fileSnippets,
+    mode: s.mode,
+    fileDiffs: s.fileDiffs,
     registeredAt: s.registeredAt,
   };
 }
@@ -125,6 +135,9 @@ export function startServer(options: ServerOptions = {}): {
         permissionMode: input.permissionMode,
         previousPlans: input.previousPlans ?? [],
         fileSnippets: input.fileSnippets ?? [],
+        mode: input.mode ?? "plan",
+        fileDiffs: input.fileDiffs ?? [],
+        cwd: input.cwd,
         registeredAt: Date.now(),
         resolve,
         hookSSE: new Set(),
@@ -255,6 +268,41 @@ export function startServer(options: ServerOptions = {}): {
           } catch (err) {
             console.error("IPE: error resolving session:", err);
             return Response.json({ error: "internal error" }, { status: 500 });
+          }
+        }
+
+        if (route.action === "refresh-diff" && req.method === "POST") {
+          if (!session || session.mode !== "diff-review" || !session.cwd) {
+            return Response.json({ error: "not found" }, { status: 404 });
+          }
+          let body: { mode?: DiffMode };
+          try {
+            body = await req.json();
+          } catch {
+            return Response.json(
+              { error: "invalid request body" },
+              { status: 400 },
+            );
+          }
+          const validModes: DiffMode[] = ["unstaged", "staged", "all"];
+          if (body.mode && !validModes.includes(body.mode)) {
+            return Response.json(
+              { error: `invalid mode: ${body.mode}` },
+              { status: 400 },
+            );
+          }
+          try {
+            const diffMode = body.mode ?? "unstaged";
+            const raw = await runGitDiff(session.cwd, diffMode);
+            const fileDiffs = parseUnifiedDiff(raw);
+            session.fileDiffs = fileDiffs;
+            return Response.json({ ok: true, fileDiffs });
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            return Response.json(
+              { ok: false, error: message },
+              { status: 500 },
+            );
           }
         }
 

@@ -7,6 +7,11 @@ import { loadHistory, saveVersion } from "../../../packages/server/history.ts";
 import { checkForUpdate } from "../../../packages/server/update.ts";
 import { resolveSnippets } from "../../../packages/server/snippets.ts";
 import { readPlanFromDisk } from "../../../packages/server/plan-file.ts";
+import {
+  runGitDiff,
+  parseUnifiedDiff,
+  type DiffMode,
+} from "../../../packages/server/git-diff.ts";
 
 const VERSION = "dev";
 const DEFAULT_PORT = 19450;
@@ -295,8 +300,125 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error("IPE fatal error:", err);
-  outputDecision("deny", "IPE internal error. Please retry.");
-  process.exit(1);
-});
+async function diffReviewClientPath(
+  port: number,
+  sessionId: string,
+  fileDiffs: ReturnType<typeof parseUnifiedDiff>,
+  cwd: string,
+): Promise<void> {
+  const res = await fetch(`http://localhost:${port}/api/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId,
+      plan: "",
+      permissionMode: "review",
+      mode: "diff-review",
+      fileDiffs,
+      cwd,
+    }),
+  });
+
+  if (!res.ok) {
+    console.error(`IPE: failed to register with server: ${res.status}`);
+    outputDecision("deny", "Failed to register with IPE server. Please retry.");
+    return;
+  }
+
+  console.error(
+    `IPE ${VERSION} registered with server at http://localhost:${port}`,
+  );
+
+  try {
+    const decision = await waitForSSEDecision(port, sessionId);
+    outputDecision(decision.behavior, decision.feedback);
+  } catch (err) {
+    console.error(`IPE: lost connection to server: ${err}`);
+    outputDecision(
+      "deny",
+      "IPE server disconnected before delivering decision. Please retry.",
+    );
+  }
+}
+
+async function diffReviewMain() {
+  const drIdx = process.argv.indexOf("diff-review");
+  const args = drIdx >= 0 ? process.argv.slice(drIdx + 1) : [];
+  let diffMode: DiffMode = "unstaged";
+  if (args.includes("--staged")) diffMode = "staged";
+  else if (args.includes("--all")) diffMode = "all";
+
+  const cwd = process.cwd();
+  console.error(`IPE diff-review: mode=${diffMode} cwd=${cwd}`);
+
+  let raw: string;
+  try {
+    raw = await runGitDiff(cwd, diffMode);
+  } catch (err) {
+    console.error(`IPE: git diff failed: ${err}`);
+    outputDecision("deny", `git diff failed: ${err}`);
+    process.exit(1);
+  }
+
+  const fileDiffs = parseUnifiedDiff(raw);
+  if (fileDiffs.length === 0) {
+    console.error("No changes to review.");
+    process.exit(0);
+  }
+
+  console.error(`IPE: ${fileDiffs.length} file(s) changed`);
+
+  const sessionId = `review-${Date.now()}`;
+
+  const latestVersion = await checkForUpdate(VERSION);
+  if (latestVersion) {
+    console.error(
+      `\nIPE ${latestVersion} is available (current: ${VERSION}). Upgrade: curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash\n`,
+    );
+  }
+
+  const { server, port } = await findOrStartServer(
+    VERSION,
+    latestVersion || undefined,
+  );
+
+  if (server) {
+    const decisionPromise = server.addSession({
+      sessionId,
+      plan: "",
+      permissionMode: "review",
+      mode: "diff-review",
+      fileDiffs,
+      cwd,
+    });
+
+    const url = `http://localhost:${port}`;
+    console.error(`IPE ${VERSION} running at ${url}`);
+    openBrowser(url);
+
+    const decision = await decisionPromise;
+    outputDecision(decision.behavior, decision.feedback);
+
+    await server.waitForDrain();
+    await new Promise((r) => setTimeout(r, 500));
+    server.stop();
+    setTimeout(() => process.exit(0), 50);
+  } else {
+    await diffReviewClientPath(port, sessionId, fileDiffs, cwd);
+  }
+}
+
+// Route based on subcommand (argv differs between `bun run` and compiled binary)
+const subcommand = process.argv.find((a) => a === "diff-review");
+if (subcommand === "diff-review") {
+  diffReviewMain().catch((err) => {
+    console.error("IPE fatal error:", err);
+    process.exit(1);
+  });
+} else {
+  main().catch((err) => {
+    console.error("IPE fatal error:", err);
+    outputDecision("deny", "IPE internal error. Please retry.");
+    process.exit(1);
+  });
+}

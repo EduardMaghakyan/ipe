@@ -1,5 +1,9 @@
-import { describe, test, expect, afterEach } from "bun:test";
+import { describe, test, expect, afterEach, afterAll } from "bun:test";
 import { startServer } from "../../packages/server/index";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import type { FileDiff } from "../../packages/server/git-diff";
 
 let stopFn: (() => void) | null = null;
 
@@ -251,5 +255,189 @@ describe("multi-session server", () => {
     expect(res.status).toBe(500);
     const data = await res.json();
     expect(data.ok).toBe(false);
+  });
+});
+
+describe("diff-review sessions", () => {
+  const sampleDiffs: FileDiff[] = [
+    {
+      oldPath: "src/main.ts",
+      newPath: "src/main.ts",
+      status: "modified",
+      hunks: [
+        {
+          header: "@@ -1,3 +1,3 @@",
+          lines: [
+            { type: "remove", content: "old line", oldLineNo: 1 },
+            { type: "add", content: "new line", newLineNo: 1 },
+          ],
+        },
+      ],
+    },
+  ];
+
+  test("addSession with diff-review mode includes fileDiffs in summary", async () => {
+    const { port, addSession } = createServer();
+
+    addSession({
+      sessionId: "dr1",
+      plan: "",
+      permissionMode: "review",
+      mode: "diff-review",
+      fileDiffs: sampleDiffs,
+      cwd: "/tmp",
+    });
+
+    const res = await fetch(`http://localhost:${port}/api/sessions`);
+    const data = await res.json();
+    expect(data).toHaveLength(1);
+    expect(data[0].sessionId).toBe("dr1");
+    expect(data[0].mode).toBe("diff-review");
+    expect(data[0].title).toBe("Diff Review");
+    expect(data[0].fileDiffs).toHaveLength(1);
+    expect(data[0].fileDiffs[0].newPath).toBe("src/main.ts");
+  });
+
+  test("approve works for diff-review session", async () => {
+    const { port, addSession } = createServer();
+
+    const decision = addSession({
+      sessionId: "dr2",
+      plan: "",
+      permissionMode: "review",
+      mode: "diff-review",
+      fileDiffs: sampleDiffs,
+    });
+
+    const res = await fetch(
+      `http://localhost:${port}/api/sessions/dr2/approve`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedback: "LGTM" }),
+      },
+    );
+    expect(res.status).toBe(200);
+
+    const result = await decision;
+    expect(result.behavior).toBe("allow");
+    expect(result.feedback).toBe("LGTM");
+  });
+
+  test("deny works for diff-review session", async () => {
+    const { port, addSession } = createServer();
+
+    const decision = addSession({
+      sessionId: "dr3",
+      plan: "",
+      permissionMode: "review",
+      mode: "diff-review",
+      fileDiffs: sampleDiffs,
+    });
+
+    await fetch(`http://localhost:${port}/api/sessions/dr3/deny`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback: "Needs fixes" }),
+    });
+
+    const result = await decision;
+    expect(result.behavior).toBe("deny");
+    expect(result.feedback).toBe("Needs fixes");
+  });
+});
+
+describe("refresh-diff route", () => {
+  test("returns 404 for nonexistent session", async () => {
+    const { port } = createServer();
+    const res = await fetch(
+      `http://localhost:${port}/api/sessions/nope/refresh-diff`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "unstaged" }),
+      },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  test("returns 404 for plan-mode session", async () => {
+    const { port, addSession } = createServer();
+    addSession({
+      sessionId: "plan1",
+      plan: "# Plan",
+      permissionMode: "plan",
+    });
+    const res = await fetch(
+      `http://localhost:${port}/api/sessions/plan1/refresh-diff`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "unstaged" }),
+      },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  test("returns 400 for invalid JSON body", async () => {
+    const { port, addSession } = createServer();
+    addSession({
+      sessionId: "dr4",
+      plan: "",
+      permissionMode: "review",
+      mode: "diff-review",
+      fileDiffs: [],
+      cwd: "/tmp",
+    });
+    const res = await fetch(
+      `http://localhost:${port}/api/sessions/dr4/refresh-diff`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not json",
+      },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  test("returns refreshed diffs from a real git repo", async () => {
+    const tmpDir = join(tmpdir(), `ipe-refresh-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+
+    const run = (cmd: string[]) =>
+      Bun.spawn(cmd, { cwd: tmpDir, stdout: "pipe", stderr: "pipe" });
+    await run(["git", "init"]).exited;
+    await run(["git", "config", "user.email", "test@test.com"]).exited;
+    await run(["git", "config", "user.name", "Test"]).exited;
+    writeFileSync(join(tmpDir, "a.txt"), "hello\n");
+    await run(["git", "add", "."]).exited;
+    await run(["git", "commit", "-m", "init"]).exited;
+    writeFileSync(join(tmpDir, "a.txt"), "world\n");
+
+    const { port, addSession } = createServer();
+    addSession({
+      sessionId: "dr5",
+      plan: "",
+      permissionMode: "review",
+      mode: "diff-review",
+      fileDiffs: [],
+      cwd: tmpDir,
+    });
+
+    const res = await fetch(
+      `http://localhost:${port}/api/sessions/dr5/refresh-diff`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "unstaged" }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.fileDiffs.length).toBeGreaterThan(0);
+    expect(data.fileDiffs[0].newPath).toBe("a.txt");
+
+    rmSync(tmpDir, { recursive: true });
   });
 });

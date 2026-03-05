@@ -1,0 +1,128 @@
+name: PR Build
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # On PR close: delete the pre-release and tag
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Delete pre-release and tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: pr-${{ github.event.pull_request.number }}
+        run: |
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+
+  # On PR push: build and create/update pre-release
+  create-release:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create or update pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: pr-${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # Delete existing release if any (to recreate fresh)
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          # Create tag at PR head
+          git tag -f "$TAG"
+          git push origin "$TAG" --force
+          # Create pre-release
+          gh release create "$TAG" \
+            --prerelease \
+            --title "PR #${PR_NUMBER}: ${PR_TITLE}" \
+            --notes "Pre-release build for PR #${PR_NUMBER}.
+
+          **Install for testing:**
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash -s -- --version ${TAG}
+          \`\`\`"
+
+  build:
+    needs: create-release
+    if: github.event.action != 'closed'
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: darwin-arm64
+            ext: ""
+          - os: ubuntu-latest
+            target: linux-x64
+            ext: ""
+          - os: windows-latest
+            target: windows-x64
+            ext: ".exe"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install
+
+      - name: Stamp version
+        shell: bash
+        env:
+          TAG: pr-${{ github.event.pull_request.number }}
+          SHORT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          VERSION="${TAG}-${SHORT_SHA:0:7}"
+          sed -i.bak "s/const VERSION = \"dev\"/const VERSION = \"$VERSION\"/" apps/hook/server/index.ts
+
+      - run: bun run build
+
+      - name: Rename binary
+        shell: bash
+        run: mv ipe${{ matrix.ext }} ipe-${{ matrix.target }}${{ matrix.ext }}
+
+      - name: Upload release asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: pr-${{ github.event.pull_request.number }}
+        run: gh release upload "$TAG" ipe-${{ matrix.target }}${{ matrix.ext }} --clobber
+
+  comment:
+    needs: build
+    if: github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment install instructions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TAG: pr-${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR_NUMBER" \
+            --repo "${{ github.repository }}" \
+            --body "**PR build available for testing:**
+
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash -s -- --version ${TAG}
+          \`\`\`
+
+          This pre-release will be updated on each push and cleaned up when the PR is closed."

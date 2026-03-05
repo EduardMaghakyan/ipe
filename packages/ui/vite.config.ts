@@ -249,6 +249,253 @@ export function decodeWithoutVerification(token: string): JwtPayload | null {
     },
   ];
 
+  const mockFileDiffs = [
+    {
+      oldPath: "src/auth/login.ts",
+      newPath: "src/auth/login.ts",
+      status: "modified",
+      hunks: [
+        {
+          header:
+            "@@ -10,8 +10,12 @@ import { validateCredentials } from './validate';",
+          lines: [
+            {
+              type: "context",
+              content:
+                "export async function login(email: string, password: string) {",
+              oldLineNo: 10,
+              newLineNo: 10,
+            },
+            {
+              type: "context",
+              content: "  const user = await findUserByEmail(email);",
+              oldLineNo: 11,
+              newLineNo: 11,
+            },
+            {
+              type: "context",
+              content: "  if (!user) {",
+              oldLineNo: 12,
+              newLineNo: 12,
+            },
+            {
+              type: "remove",
+              content: "    throw new Error('Invalid credentials');",
+              oldLineNo: 13,
+            },
+            {
+              type: "add",
+              content:
+                "    throw new AuthError('INVALID_EMAIL', 'No account found with this email');",
+              newLineNo: 13,
+            },
+            { type: "context", content: "  }", oldLineNo: 14, newLineNo: 14 },
+            { type: "context", content: "", oldLineNo: 15, newLineNo: 15 },
+            {
+              type: "remove",
+              content:
+                "  const valid = await bcrypt.compare(password, user.passwordHash);",
+              oldLineNo: 16,
+            },
+            {
+              type: "add",
+              content:
+                "  const valid = await validateCredentials(password, user.passwordHash);",
+              newLineNo: 16,
+            },
+            {
+              type: "context",
+              content: "  if (!valid) {",
+              oldLineNo: 17,
+              newLineNo: 17,
+            },
+            {
+              type: "remove",
+              content: "    throw new Error('Invalid credentials');",
+              oldLineNo: 18,
+            },
+            {
+              type: "add",
+              content: "    await recordFailedAttempt(user.id);",
+              newLineNo: 18,
+            },
+            {
+              type: "add",
+              content:
+                "    throw new AuthError('INVALID_PASSWORD', 'Incorrect password');",
+              newLineNo: 19,
+            },
+            { type: "context", content: "  }", oldLineNo: 19, newLineNo: 20 },
+            { type: "add", content: "", newLineNo: 21 },
+            {
+              type: "add",
+              content: "  await resetFailedAttempts(user.id);",
+              newLineNo: 22,
+            },
+            {
+              type: "context",
+              content: "  return createSession(user);",
+              oldLineNo: 20,
+              newLineNo: 23,
+            },
+            { type: "context", content: "}", oldLineNo: 21, newLineNo: 24 },
+          ],
+        },
+      ],
+    },
+    {
+      oldPath: "src/auth/errors.ts",
+      newPath: "src/auth/errors.ts",
+      status: "added",
+      hunks: [
+        {
+          header: "@@ -0,0 +1,18 @@",
+          lines: [
+            {
+              type: "add",
+              content: "export class AuthError extends Error {",
+              newLineNo: 1,
+            },
+            { type: "add", content: "  code: string;", newLineNo: 2 },
+            { type: "add", content: "", newLineNo: 3 },
+            {
+              type: "add",
+              content: "  constructor(code: string, message: string) {",
+              newLineNo: 4,
+            },
+            { type: "add", content: "    super(message);", newLineNo: 5 },
+            { type: "add", content: "    this.code = code;", newLineNo: 6 },
+            {
+              type: "add",
+              content: "    this.name = 'AuthError';",
+              newLineNo: 7,
+            },
+            { type: "add", content: "  }", newLineNo: 8 },
+            { type: "add", content: "}", newLineNo: 9 },
+            { type: "add", content: "", newLineNo: 10 },
+            {
+              type: "add",
+              content: "export class RateLimitError extends AuthError {",
+              newLineNo: 11,
+            },
+            { type: "add", content: "  retryAfter: number;", newLineNo: 12 },
+            { type: "add", content: "", newLineNo: 13 },
+            {
+              type: "add",
+              content: "  constructor(retryAfter: number) {",
+              newLineNo: 14,
+            },
+            {
+              type: "add",
+              content:
+                "    super('RATE_LIMITED', `Too many attempts. Try again in ${retryAfter}s`);",
+              newLineNo: 15,
+            },
+            {
+              type: "add",
+              content: "    this.retryAfter = retryAfter;",
+              newLineNo: 16,
+            },
+            { type: "add", content: "  }", newLineNo: 17 },
+            { type: "add", content: "}", newLineNo: 18 },
+          ],
+        },
+      ],
+    },
+    {
+      oldPath: "src/utils/helpers.ts",
+      newPath: "src/utils/helpers.ts",
+      status: "modified",
+      hunks: [
+        {
+          header:
+            "@@ -42,6 +42,15 @@ export function formatDate(date: Date): string {",
+          lines: [
+            {
+              type: "context",
+              content: "  return date.toISOString().split('T')[0];",
+              oldLineNo: 42,
+              newLineNo: 42,
+            },
+            { type: "context", content: "}", oldLineNo: 43, newLineNo: 43 },
+            { type: "context", content: "", oldLineNo: 44, newLineNo: 44 },
+            {
+              type: "add",
+              content:
+                "export async function recordFailedAttempt(userId: string): Promise<void> {",
+              newLineNo: 45,
+            },
+            {
+              type: "add",
+              content: "  const key = `failed:${userId}`;",
+              newLineNo: 46,
+            },
+            {
+              type: "add",
+              content: "  const count = (await redis.incr(key)) || 0;",
+              newLineNo: 47,
+            },
+            {
+              type: "add",
+              content: "  await redis.expire(key, 900); // 15 min window",
+              newLineNo: 48,
+            },
+            { type: "add", content: "  if (count >= 5) {", newLineNo: 49 },
+            {
+              type: "add",
+              content: "    throw new RateLimitError(900);",
+              newLineNo: 50,
+            },
+            { type: "add", content: "  }", newLineNo: 51 },
+            { type: "add", content: "}", newLineNo: 52 },
+            { type: "add", content: "", newLineNo: 53 },
+            {
+              type: "context",
+              content: "export function slugify(text: string): string {",
+              oldLineNo: 45,
+              newLineNo: 54,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      oldPath: "src/legacy/old-auth.ts",
+      newPath: "src/legacy/old-auth.ts",
+      status: "deleted",
+      hunks: [
+        {
+          header: "@@ -1,8 +0,0 @@",
+          lines: [
+            {
+              type: "remove",
+              content:
+                "// Legacy authentication — replaced by src/auth/login.ts",
+              oldLineNo: 1,
+            },
+            {
+              type: "remove",
+              content:
+                "export function legacyLogin(user: string, pass: string) {",
+              oldLineNo: 2,
+            },
+            {
+              type: "remove",
+              content: "  // This was the old login flow",
+              oldLineNo: 3,
+            },
+            {
+              type: "remove",
+              content: "  return { token: 'legacy-token' };",
+              oldLineNo: 4,
+            },
+            { type: "remove", content: "}", oldLineNo: 5 },
+          ],
+        },
+      ],
+    },
+  ];
+
   const mockSessions = () => {
     const p = plan();
     return [
@@ -307,6 +554,17 @@ export function decodeWithoutVerification(token: string): JwtPayload | null {
           },
         ],
         registeredAt: Date.now() - 30000,
+      },
+      {
+        sessionId: "session-diff-review",
+        title: "Diff Review",
+        plan: "",
+        permissionMode: "review",
+        fileSnippets: [],
+        previousPlans: [],
+        mode: "diff-review",
+        fileDiffs: mockFileDiffs,
+        registeredAt: Date.now() - 10000,
       },
     ];
   };

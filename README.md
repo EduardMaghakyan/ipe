@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/EduardMaghakyan/ipe)](https://github.com/EduardMaghakyan/ipe/releases)
 
-Review Claude Code plans in a browser UI with inline comments, like a GitHub PR review.
+Review Claude Code plans and code diffs in a browser UI with inline comments, like a GitHub PR review.
 
 ![demo](https://github.com/user-attachments/assets/096b1f86-eba8-4b66-b99e-2808fea4e00f)
 
@@ -14,6 +14,7 @@ Review Claude Code plans in a browser UI with inline comments, like a GitHub PR 
 - **Plan version diff** — compare current plan against previous versions with side-by-side or inline views
 - **Multi-session support** — multiple concurrent Claude Code sessions share one server, switch between plans via tabs
 - **Line-range file references** — supports `src/foo.ts:10-20` syntax to show specific line ranges in the snippet drawer
+- **Code diff review** — review unstaged/staged/all changes with a file picker, unified diff view, and inline commenting (`/diff-review`)
 
 ## Install
 
@@ -29,13 +30,13 @@ curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh
 irm https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.ps1 | iex
 ```
 
-This downloads a prebuilt binary and registers it as a Claude Code hook. Run it again to update.
+This downloads a prebuilt binary, registers it as a Claude Code hook, and installs the `/diff-review` command. Run it again to update.
 
 To pin a specific version:
 
 ```sh
 # macOS / Linux
-IPE_VERSION=v0.1.0 curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash -s -- --version v0.1.0
 
 # Windows (PowerShell)
 $env:IPE_VERSION="v0.1.0"; irm https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.ps1 | iex
@@ -92,6 +93,8 @@ Then add the hook to your Claude Code settings (`~/.claude/settings.json` for gl
 
 On Windows, use the full path: `"command": "C:\\Users\\<you>\\.ipe\\ipe.exe"`
 
+To also enable the `/diff-review` slash command, create `~/.claude/commands/diff-review.md` — see `install.sh` for the template.
+
 **Key details:**
 
 - `"matcher": "ExitPlanMode"` — the hook only fires when Claude calls `ExitPlanMode`, not on other permission requests.
@@ -107,6 +110,18 @@ On Windows, use the full path: `"command": "C:\\Users\\<you>\\.ipe\\ipe.exe"`
 5. **Accept:** Click the green "Accept" button. Claude proceeds with the plan.
 6. **Request Changes:** Click the amber "Request Changes" button. Your inline comments and general feedback are sent back to Claude.
 7. The browser tab closes automatically after submitting.
+
+## Diff Review
+
+Review code changes interactively before committing:
+
+1. Run `/diff-review` in Claude Code (or `~/.ipe/ipe diff-review` directly).
+2. A browser tab opens showing changed files with a unified diff view.
+3. Click files in the left sidebar to navigate between them.
+4. Add inline comments on any diff line using the "+" gutter button.
+5. **Approve** or **Request Changes** — feedback is sent back to Claude.
+
+Options: `--staged` (staged changes only), `--all` (all changes vs HEAD).
 
 ## Configuration
 
@@ -166,12 +181,14 @@ bun run format:check  # check only
 
 ```sh
 rm -rf ~/.ipe
+rm -f ~/.claude/commands/diff-review.md
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
 Remove-Item -Recurse -Force "$env:USERPROFILE\.ipe"
+Remove-Item -Force "$env:USERPROFILE\.claude\commands\diff-review.md" -ErrorAction SilentlyContinue
 ```
 
 Then remove the `ExitPlanMode` hook entry from `~/.claude/settings.json`.
