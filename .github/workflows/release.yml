@@ -4,24 +4,36 @@ on:
   push:
     tags:
       - "v*"
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.14)"
+        required: true
 
 permissions:
   contents: write
 
 jobs:
   create-release:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.tag.outputs.tag_name }}
     steps:
       - uses: actions/checkout@v4
-
+      - name: Get tag name
+        id: tag
+        run: echo "tag_name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.ref_name }}
-        run: gh release create "$TAG_NAME" --generate-notes --draft=false
+        run: gh release create "${{ github.ref_name }}" --generate-notes --draft=false
 
   build:
     needs: create-release
+    if: ${{ !cancelled() && needs.create-release.result != 'failure' }}
     strategy:
       matrix:
         include:
@@ -37,8 +49,13 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    env:
+      TAG_NAME: ${{ needs.create-release.outputs.tag_name || github.event.release.tag_name || github.event.inputs.tag }}
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG_NAME }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -48,8 +65,6 @@ jobs:
 
       - name: Stamp version
         shell: bash
-        env:
-          TAG_NAME: ${{ github.ref_name }}
         run: sed -i.bak "s/const VERSION = \"dev\"/const VERSION = \"$TAG_NAME\"/" apps/hook/server/index.ts
 
       - run: bun run build
@@ -62,5 +77,4 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.ref_name }}
         run: gh release upload "$TAG_NAME" ipe-${{ matrix.target }}${{ matrix.ext }} --clobber
