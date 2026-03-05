@@ -486,9 +486,7 @@ describe("diff-review hook", () => {
       proc.stderr as ReadableStream,
     );
 
-    const sessRes = await fetch(
-      `http://localhost:${serverPort}/api/sessions`,
-    );
+    const sessRes = await fetch(`http://localhost:${serverPort}/api/sessions`);
     const sessions = await sessRes.json();
     const sessionId = sessions[0].sessionId;
 
@@ -525,9 +523,7 @@ describe("diff-review hook", () => {
       proc.stderr as ReadableStream,
     );
 
-    const sessRes = await fetch(
-      `http://localhost:${serverPort}/api/sessions`,
-    );
+    const sessRes = await fetch(`http://localhost:${serverPort}/api/sessions`);
     const sessions = await sessRes.json();
     const sessionId = sessions[0].sessionId;
 

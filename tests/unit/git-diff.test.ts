@@ -298,7 +298,9 @@ describe("runGitDiff", () => {
       expect(result).toContain("-original");
       expect(result).toContain("+modified");
     } finally {
-      try { rmSync(dir, { recursive: true }); } catch {}
+      try {
+        rmSync(dir, { recursive: true });
+      } catch {}
     }
   });
 
@@ -316,7 +318,9 @@ describe("runGitDiff", () => {
       expect(staged).toContain("file.txt");
       expect(staged).toContain("+modified");
     } finally {
-      try { rmSync(dir, { recursive: true }); } catch {}
+      try {
+        rmSync(dir, { recursive: true });
+      } catch {}
     }
   });
 
@@ -331,7 +335,9 @@ describe("runGitDiff", () => {
       expect(result).toContain("file.txt");
       expect(result).toContain("+modified");
     } finally {
-      try { rmSync(dir, { recursive: true }); } catch {}
+      try {
+        rmSync(dir, { recursive: true });
+      } catch {}
     }
   });
 
@@ -341,7 +347,9 @@ describe("runGitDiff", () => {
     try {
       await expect(runGitDiff(dir)).rejects.toThrow("git diff failed");
     } finally {
-      try { rmSync(dir, { recursive: true }); } catch {}
+      try {
+        rmSync(dir, { recursive: true });
+      } catch {}
     }
   });
 });
