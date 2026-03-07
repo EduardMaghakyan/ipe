@@ -603,9 +603,9 @@ describe("accept mode stdout output", () => {
     const decision = output.hookSpecificOutput.decision;
 
     expect(decision.behavior).toBe("allow");
-    expect(decision.updatedPermissions).toEqual({
-      allow: ["ExitPlanMode"],
-    });
+    expect(decision.updatedPermissions).toEqual([
+      { type: "setMode", mode: "acceptEdits", destination: "session" },
+    ]);
     expect(decision.clearContext).toBeUndefined();
   }, 10000);
 

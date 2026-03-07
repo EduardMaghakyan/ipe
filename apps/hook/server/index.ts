@@ -53,9 +53,9 @@ function outputDecision(
     decision.message = message || "Plan changes requested";
   }
   if (behavior === "allow" && acceptMode === "auto-approve") {
-    decision.updatedPermissions = {
-      allow: ["ExitPlanMode"],
-    };
+    decision.updatedPermissions = [
+      { type: "setMode", mode: "acceptEdits", destination: "session" },
+    ];
   }
   const output = {
     hookSpecificOutput: {
