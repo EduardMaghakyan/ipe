@@ -1,9 +1,11 @@
 <script lang="ts">
+  type AcceptMode = "normal" | "auto-approve";
+
   interface Props {
     generalComment: string;
     activeCommentCount: number;
     submitting: boolean;
-    onSubmit: (action: "approve" | "deny", generalComment: string) => void;
+    onSubmit: (action: "approve" | "deny", generalComment: string, acceptMode?: AcceptMode) => void;
     onCommentChange: (comment: string) => void;
     approveLabel?: string;
   }
@@ -19,6 +21,7 @@
 
   let open = $state(false);
   let action = $state<"approve" | "deny">("approve");
+  let acceptMode = $state<AcceptMode>("normal");
   let dropdownEl: HTMLDivElement | undefined = $state();
   let textareaEl: HTMLTextAreaElement | undefined = $state();
 
@@ -47,7 +50,7 @@
     }
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && open) {
       e.preventDefault();
-      onSubmit(action, generalComment);
+      onSubmit(action, generalComment, action === "approve" ? acceptMode : undefined);
     }
   }
 
@@ -96,11 +99,24 @@
         </label>
       </div>
 
+      {#if action === "approve"}
+        <div class="accept-modes">
+          <label class="radio-option accept-mode-option">
+            <input type="radio" bind:group={acceptMode} value="normal" />
+            <span class="radio-label">Approve, manually approve edits</span>
+          </label>
+          <label class="radio-option accept-mode-option">
+            <input type="radio" bind:group={acceptMode} value="auto-approve" />
+            <span class="radio-label">Approve, auto-accept edits</span>
+          </label>
+        </div>
+      {/if}
+
       <button
         class="btn-submit"
         class:approve={action === "approve"}
         disabled={submitting}
-        onclick={() => onSubmit(action, generalComment)}
+        onclick={() => onSubmit(action, generalComment, action === "approve" ? acceptMode : undefined)}
       >
         {action === "approve" ? approveLabel : "Request changes"}
       </button>
@@ -205,6 +221,22 @@
   .radio-label {
     font-size: 0.875rem;
     color: var(--color-text-default);
+  }
+  .accept-modes {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: var(--color-bg-page);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .accept-mode-option .radio-label {
+    font-size: 0.8rem;
+  }
+  .accept-mode-option input[type="radio"] {
+    accent-color: var(--color-approve-bg);
   }
   .btn-submit {
     margin-top: 14px;

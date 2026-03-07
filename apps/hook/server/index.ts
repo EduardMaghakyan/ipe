@@ -43,10 +43,19 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf-8");
 }
 
-function outputDecision(behavior: "allow" | "deny", message?: string): void {
+function outputDecision(
+  behavior: "allow" | "deny",
+  message?: string,
+  acceptMode?: string,
+): void {
   const decision: Record<string, unknown> = { behavior };
   if (behavior === "deny") {
     decision.message = message || "Plan changes requested";
+  }
+  if (behavior === "allow" && acceptMode === "auto-approve") {
+    decision.updatedPermissions = {
+      allow: ["ExitPlanMode"],
+    };
   }
   const output = {
     hookSpecificOutput: {
@@ -231,7 +240,7 @@ async function clientPath(
 
   try {
     const decision = await waitForSSEDecision(port, sessionId);
-    outputDecision(decision.behavior, decision.feedback);
+    outputDecision(decision.behavior, decision.feedback, decision.acceptMode);
   } catch (err) {
     console.error(`IPE: lost connection to server: ${err}`);
     outputDecision(
@@ -311,7 +320,7 @@ async function main() {
     openBrowser(url);
 
     const decision = await decisionPromise;
-    outputDecision(decision.behavior, decision.feedback);
+    outputDecision(decision.behavior, decision.feedback, decision.acceptMode);
 
     await server.waitForDrain();
     // Grace period: allow in-flight SSE responses to be read by clients
@@ -363,7 +372,7 @@ async function diffReviewClientPath(
 
   try {
     const decision = await waitForSSEDecision(port, sessionId);
-    outputDecision(decision.behavior, decision.feedback);
+    outputDecision(decision.behavior, decision.feedback, decision.acceptMode);
   } catch (err) {
     console.error(`IPE: lost connection to server: ${err}`);
     outputDecision(
@@ -437,7 +446,7 @@ async function diffReviewMain() {
     openBrowser(url);
 
     const decision = await decisionPromise;
-    outputDecision(decision.behavior, decision.feedback);
+    outputDecision(decision.behavior, decision.feedback, decision.acceptMode);
 
     await server.waitForDrain();
     await new Promise((r) => setTimeout(r, 500));

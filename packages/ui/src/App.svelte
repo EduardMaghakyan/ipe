@@ -280,19 +280,23 @@
     annotations = annotations.map((a) => (a.id === id ? { ...a, comment } : a));
   }
 
-  async function submitDecision(action: "approve" | "deny") {
+  async function submitDecision(action: "approve" | "deny", acceptMode?: "normal" | "auto-approve") {
     if (!activeSessionId || submitting) return;
     submitting = true;
     const sid = activeSessionId;
     const nonEmpty = annotations.filter((a) => a.comment.trim());
     const feedback = formatFeedback(nonEmpty, generalComment);
+    const body: Record<string, unknown> = { feedback };
+    if (action === "approve" && acceptMode) {
+      body.acceptMode = acceptMode;
+    }
     try {
       const res = await fetch(
         `/api/sessions/${encodeURIComponent(sid)}/${action}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ feedback }),
+          body: JSON.stringify(body),
         },
       );
       if (!res.ok) {
@@ -354,9 +358,9 @@
     onCommentChange={(c) => {
       generalComment = c;
     }}
-    onSubmit={(action, comment) => {
+    onSubmit={(action, comment, acceptMode) => {
       generalComment = comment;
-      submitDecision(action);
+      submitDecision(action, acceptMode);
     }}
   />
   <main class="main">

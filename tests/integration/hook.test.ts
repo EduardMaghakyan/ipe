@@ -17,6 +17,7 @@ afterAll(() => {
 });
 
 let nextPort = 19600; // Unique range to avoid conflicts
+let nextLockId = 0;
 
 function spawnHook(
   stdinData: string,
@@ -27,6 +28,8 @@ function spawnHook(
   stderr: () => Promise<string>;
 } {
   const port = nextPort++;
+  const lockDir = join(tmpDir, `lock-${nextLockId++}`);
+  mkdirSync(lockDir, { recursive: true });
   const proc = Bun.spawn(["bun", HOOK_ENTRY], {
     stdin: new Blob([stdinData]),
     stdout: "pipe",
@@ -35,6 +38,7 @@ function spawnHook(
       ...process.env,
       IPE_BROWSER: "true",
       IPE_PORT: String(port),
+      IPE_LOCK_DIR: lockDir,
       ...extraEnv,
     },
   });
@@ -548,4 +552,86 @@ describe("diff-review hook", () => {
     expect(output.hookSpecificOutput.decision.behavior).toBe("deny");
     expect(output.hookSpecificOutput.decision.message).toBe("Fix the bug");
   }, 15000);
+});
+
+// --- accept mode stdout output tests ---
+
+let nextAcceptPort = 19900;
+
+function spawnAcceptModeHook(sessionId: string) {
+  const port = nextAcceptPort++;
+  const lockDir = join(tmpDir, `accept-lock-${port}`);
+  mkdirSync(lockDir, { recursive: true });
+  const input = makeInput("# Plan\n\nContent", "default", sessionId);
+  const proc = Bun.spawn(["bun", HOOK_ENTRY], {
+    stdin: new Blob([input]),
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      IPE_BROWSER: "true",
+      IPE_PORT: String(port),
+      IPE_LOCK_DIR: lockDir,
+    },
+  });
+  return {
+    proc,
+    stdout: async () => new Response(proc.stdout).text(),
+  };
+}
+
+describe("accept mode stdout output", () => {
+  test("auto-approve mode outputs updatedPermissions", async () => {
+    const { proc, stdout } = spawnAcceptModeHook("am1");
+
+    const { port } = await waitForServer(proc.stderr as ReadableStream);
+
+    await fetch(`http://localhost:${port}/api/sessions/am1/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback: "", acceptMode: "auto-approve" }),
+    });
+
+    await Promise.race([
+      proc.exited,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 3000),
+      ),
+    ]);
+    const out = await stdout();
+    const output = JSON.parse(out.trim());
+    const decision = output.hookSpecificOutput.decision;
+
+    expect(decision.behavior).toBe("allow");
+    expect(decision.updatedPermissions).toEqual({
+      allow: ["ExitPlanMode"],
+    });
+    expect(decision.clearContext).toBeUndefined();
+  }, 10000);
+
+  test("normal accept mode outputs no extra fields", async () => {
+    const { proc, stdout } = spawnAcceptModeHook("am3");
+
+    const { port } = await waitForServer(proc.stderr as ReadableStream);
+
+    await fetch(`http://localhost:${port}/api/sessions/am3/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback: "", acceptMode: "normal" }),
+    });
+
+    await Promise.race([
+      proc.exited,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 3000),
+      ),
+    ]);
+    const out = await stdout();
+    const output = JSON.parse(out.trim());
+    const decision = output.hookSpecificOutput.decision;
+
+    expect(decision.behavior).toBe("allow");
+    expect(decision.updatedPermissions).toBeUndefined();
+    expect(decision.clearContext).toBeUndefined();
+  }, 10000);
 });

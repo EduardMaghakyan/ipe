@@ -17,9 +17,12 @@ export interface SessionInput {
   cwd?: string;
 }
 
+export type AcceptMode = "normal" | "auto-approve";
+
 export interface SessionDecision {
   behavior: "allow" | "deny";
   feedback: string;
+  acceptMode?: AcceptMode;
 }
 
 interface SessionState {
@@ -247,7 +250,7 @@ export function startServer(options: ServerOptions = {}): {
           (route.action === "approve" || route.action === "deny") &&
           req.method === "POST"
         ) {
-          let body: { feedback?: string };
+          let body: { feedback?: string; acceptMode?: AcceptMode };
           try {
             body = await req.json();
           } catch {
@@ -261,6 +264,7 @@ export function startServer(options: ServerOptions = {}): {
             const ok = resolveSession(route.sessionId, {
               behavior,
               feedback: body.feedback || "",
+              acceptMode: behavior === "allow" ? body.acceptMode : undefined,
             });
             if (!ok)
               return Response.json({ error: "not found" }, { status: 404 });
