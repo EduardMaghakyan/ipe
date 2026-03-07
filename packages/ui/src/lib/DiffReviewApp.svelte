@@ -144,7 +144,10 @@
     }
   }
 
-  async function submitDecision(action: "approve" | "deny", acceptMode?: "normal" | "auto-approve") {
+  async function submitDecision(
+    action: "approve" | "deny",
+    acceptMode?: "normal" | "auto-approve",
+  ) {
     if (submitting) return;
     submitting = true;
     const nonEmpty = annotations.filter((a) => a.comment.trim());

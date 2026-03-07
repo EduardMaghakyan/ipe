@@ -5,7 +5,11 @@
     generalComment: string;
     activeCommentCount: number;
     submitting: boolean;
-    onSubmit: (action: "approve" | "deny", generalComment: string, acceptMode?: AcceptMode) => void;
+    onSubmit: (
+      action: "approve" | "deny",
+      generalComment: string,
+      acceptMode?: AcceptMode,
+    ) => void;
     onCommentChange: (comment: string) => void;
     approveLabel?: string;
   }
@@ -50,7 +54,11 @@
     }
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && open) {
       e.preventDefault();
-      onSubmit(action, generalComment, action === "approve" ? acceptMode : undefined);
+      onSubmit(
+        action,
+        generalComment,
+        action === "approve" ? acceptMode : undefined,
+      );
     }
   }
 
@@ -116,7 +124,12 @@
         class="btn-submit"
         class:approve={action === "approve"}
         disabled={submitting}
-        onclick={() => onSubmit(action, generalComment, action === "approve" ? acceptMode : undefined)}
+        onclick={() =>
+          onSubmit(
+            action,
+            generalComment,
+            action === "approve" ? acceptMode : undefined,
+          )}
       >
         {action === "approve" ? approveLabel : "Request changes"}
       </button>

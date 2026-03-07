@@ -20,7 +20,11 @@
     submitting: boolean;
     generalComment: string;
     onCommentChange: (comment: string) => void;
-    onSubmit: (action: "approve" | "deny", generalComment: string, acceptMode?: "normal" | "auto-approve") => void;
+    onSubmit: (
+      action: "approve" | "deny",
+      generalComment: string,
+      acceptMode?: "normal" | "auto-approve",
+    ) => void;
   }
 
   let {

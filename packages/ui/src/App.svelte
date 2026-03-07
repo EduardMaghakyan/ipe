@@ -280,7 +280,10 @@
     annotations = annotations.map((a) => (a.id === id ? { ...a, comment } : a));
   }
 
-  async function submitDecision(action: "approve" | "deny", acceptMode?: "normal" | "auto-approve") {
+  async function submitDecision(
+    action: "approve" | "deny",
+    acceptMode?: "normal" | "auto-approve",
+  ) {
     if (!activeSessionId || submitting) return;
     submitting = true;
     const sid = activeSessionId;
