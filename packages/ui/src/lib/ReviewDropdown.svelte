@@ -62,6 +62,12 @@
     }
   }
 
+  export function openAndFocusComment() {
+    open = true;
+    action = activeCommentCount > 0 ? "deny" : "approve";
+    requestAnimationFrame(() => textareaEl?.focus());
+  }
+
   let inlineCount = $derived(
     activeCommentCount - (generalComment.trim() ? 1 : 0),
   );

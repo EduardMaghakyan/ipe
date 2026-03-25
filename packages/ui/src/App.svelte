@@ -14,6 +14,8 @@
   import PlanViewer from "./lib/PlanViewer.svelte";
   import DiffOverlay from "./lib/DiffOverlay.svelte";
   import DiffReviewApp from "./lib/DiffReviewApp.svelte";
+  import KeyboardShortcutsOverlay from "./lib/KeyboardShortcutsOverlay.svelte";
+  import { isEditableTarget } from "./utils/keyboard";
 
   interface SessionUIState {
     annotations: UnitAnnotation[];
@@ -40,6 +42,8 @@
   let latestVersion = $state("");
   let showDiff = $state(false);
   let diffOnly = $state(false);
+  let showShortcutsHelp = $state(false);
+  let toolbarRef = $state<Toolbar>();
   let loading = $state(true);
   let loadError = $state("");
   let error = $state("");
@@ -280,6 +284,38 @@
     annotations = annotations.map((a) => (a.id === id ? { ...a, comment } : a));
   }
 
+  function handleGlobalKeydown(e: KeyboardEvent) {
+    if (isDiffReview) return; // DiffReviewApp handles its own shortcuts
+
+    if (
+      e.key === "Tab" &&
+      e.shiftKey &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey
+    ) {
+      if (submitting || showDiff || showShortcutsHelp) return;
+      e.preventDefault();
+      submitDecision("approve", "normal");
+      return;
+    }
+
+    if (isEditableTarget()) return;
+
+    if (e.key === "c" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (showDiff || showShortcutsHelp) return;
+      e.preventDefault();
+      toolbarRef?.openAndFocusComment();
+      return;
+    }
+
+    if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      showShortcutsHelp = !showShortcutsHelp;
+      return;
+    }
+  }
+
   async function submitDecision(
     action: "approve" | "deny",
     acceptMode?: "normal" | "auto-approve",
@@ -316,6 +352,12 @@
   }
 </script>
 
+<svelte:window onkeydown={handleGlobalKeydown} />
+
+{#if showShortcutsHelp}
+  <KeyboardShortcutsOverlay onClose={() => (showShortcutsHelp = false)} />
+{/if}
+
 {#if loading}
   <div class="loading">Loading plan...</div>
 {:else if loadError}
@@ -342,6 +384,7 @@
     />
   {/if}
   <Toolbar
+    bind:this={toolbarRef}
     title={sessionTitle}
     {version}
     {latestVersion}

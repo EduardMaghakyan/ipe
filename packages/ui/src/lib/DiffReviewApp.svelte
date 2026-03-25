@@ -4,6 +4,8 @@
   import FileList from "./FileList.svelte";
   import DiffViewer from "./DiffViewer.svelte";
   import ReviewDropdown from "./ReviewDropdown.svelte";
+  import KeyboardShortcutsOverlay from "./KeyboardShortcutsOverlay.svelte";
+  import { isEditableTarget } from "../utils/keyboard";
 
   interface Props {
     session: SessionSummary;
@@ -23,6 +25,8 @@
   let error = $state("");
   let refreshing = $state(false);
   let hydrated = $state(false);
+  let showShortcutsHelp = $state(false);
+  let reviewDropdownRef = $state<ReviewDropdown>();
 
   // Select first file on load
   $effect(() => {
@@ -144,6 +148,36 @@
     }
   }
 
+  function handleGlobalKeydown(e: KeyboardEvent) {
+    if (
+      e.key === "Tab" &&
+      e.shiftKey &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey
+    ) {
+      if (submitting || showShortcutsHelp) return;
+      e.preventDefault();
+      submitDecision("approve", "normal");
+      return;
+    }
+
+    if (isEditableTarget()) return;
+
+    if (e.key === "c" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (showShortcutsHelp) return;
+      e.preventDefault();
+      reviewDropdownRef?.openAndFocusComment();
+      return;
+    }
+
+    if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      showShortcutsHelp = !showShortcutsHelp;
+      return;
+    }
+  }
+
   async function submitDecision(
     action: "approve" | "deny",
     acceptMode?: "normal" | "auto-approve",
@@ -178,6 +212,12 @@
     }
   }
 </script>
+
+<svelte:window onkeydown={handleGlobalKeydown} />
+
+{#if showShortcutsHelp}
+  <KeyboardShortcutsOverlay onClose={() => (showShortcutsHelp = false)} />
+{/if}
 
 {#if error}
   <div class="error-banner" role="alert">
@@ -220,6 +260,7 @@
         {theme === "dark" ? "\u2600" : "\u263E"}
       </button>
       <ReviewDropdown
+        bind:this={reviewDropdownRef}
         {generalComment}
         activeCommentCount={totalCommentCount}
         {submitting}

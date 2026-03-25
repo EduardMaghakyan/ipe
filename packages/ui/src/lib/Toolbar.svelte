@@ -50,6 +50,12 @@
 
   let multiSession = $derived(sessions.length > 1);
 
+  let reviewDropdownRef = $state<ReviewDropdown>();
+
+  export function openAndFocusComment() {
+    reviewDropdownRef?.openAndFocusComment();
+  }
+
   let upgrading = $state(false);
   let upgradeResult = $state<"success" | "error" | "">("");
 
@@ -139,6 +145,7 @@
       <button class="btn btn-compare" onclick={onCompare}>Compare</button>
     {/if}
     <ReviewDropdown
+      bind:this={reviewDropdownRef}
       {generalComment}
       {activeCommentCount}
       {submitting}
