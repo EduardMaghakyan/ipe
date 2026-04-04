@@ -21,6 +21,19 @@ export interface UnitAnnotation {
   comment: string;
 }
 
+export interface QuestionOption {
+  label: string;
+  description: string;
+  preview?: string;
+}
+
+export interface Question {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiSelect: boolean;
+}
+
 export interface SessionSummary {
   sessionId: string;
   title: string;
@@ -28,8 +41,9 @@ export interface SessionSummary {
   permissionMode: string;
   previousPlans: PlanVersion[];
   fileSnippets?: FileSnippet[];
-  mode?: "plan" | "diff-review";
+  mode?: "plan" | "diff-review" | "ask";
   fileDiffs?: FileDiff[];
+  questions?: Question[];
   registeredAt: number;
 }
 
