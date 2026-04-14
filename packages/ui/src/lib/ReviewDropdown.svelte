@@ -68,6 +68,12 @@
     requestAnimationFrame(() => textareaEl?.focus());
   }
 
+  export function openForDeny() {
+    open = true;
+    action = "deny";
+    requestAnimationFrame(() => textareaEl?.focus());
+  }
+
   let inlineCount = $derived(
     activeCommentCount - (generalComment.trim() ? 1 : 0),
   );
@@ -81,6 +87,7 @@
     {#if activeCommentCount > 0}
       <span class="trigger-badge">{activeCommentCount}</span>
     {/if}
+    <kbd class="kbd-hint">c</kbd>
     <span class="caret">▾</span>
   </button>
 
@@ -110,6 +117,7 @@
         <label class="radio-option">
           <input type="radio" bind:group={action} value="deny" />
           <span class="radio-label">Request changes</span>
+          <kbd class="kbd-inline">x</kbd>
         </label>
       </div>
 
@@ -122,23 +130,31 @@
           <label class="radio-option accept-mode-option">
             <input type="radio" bind:group={acceptMode} value="auto-approve" />
             <span class="radio-label">Approve, auto-accept edits</span>
+            <kbd class="kbd-inline">Shift+Tab</kbd>
           </label>
         </div>
       {/if}
 
-      <button
-        class="btn-submit"
-        class:approve={action === "approve"}
-        disabled={submitting}
-        onclick={() =>
-          onSubmit(
-            action,
-            generalComment,
-            action === "approve" ? acceptMode : undefined,
-          )}
-      >
-        {action === "approve" ? approveLabel : "Request changes"}
-      </button>
+      <div class="submit-row">
+        <button
+          class="btn-submit"
+          class:approve={action === "approve"}
+          disabled={submitting}
+          onclick={() =>
+            onSubmit(
+              action,
+              generalComment,
+              action === "approve" ? acceptMode : undefined,
+            )}
+        >
+          {action === "approve" ? approveLabel : "Request changes"}
+        </button>
+        <span class="submit-hint"
+          ><kbd class="kbd-inline"
+            >{navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter</kbd
+          ></span
+        >
+      </div>
     </div>
   {/if}
 </div>
@@ -257,9 +273,43 @@
   .accept-mode-option input[type="radio"] {
     accent-color: var(--color-approve-bg);
   }
-  .btn-submit {
+  .kbd-hint {
+    display: inline-block;
+    padding: 1px 5px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.5);
+    line-height: 1.4;
+    margin-left: 4px;
+    vertical-align: middle;
+  }
+  .kbd-inline {
+    display: inline-block;
+    padding: 1px 5px;
+    background: var(--color-bg-page);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 0.65rem;
+    color: var(--color-text-muted);
+    line-height: 1.4;
+  }
+  .submit-row {
     margin-top: 14px;
-    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .submit-hint {
+    flex-shrink: 0;
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+  }
+  .btn-submit {
+    flex: 1;
     padding: 8px 16px;
     border-radius: 6px;
     font-size: 0.875rem;

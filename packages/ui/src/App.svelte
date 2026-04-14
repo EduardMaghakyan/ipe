@@ -296,7 +296,7 @@
     ) {
       if (submitting || showDiff || showShortcutsHelp) return;
       e.preventDefault();
-      submitDecision("approve", "normal");
+      submitDecision("approve", "auto-approve");
       return;
     }
 
@@ -306,6 +306,13 @@
       if (showDiff || showShortcutsHelp) return;
       e.preventDefault();
       toolbarRef?.openAndFocusComment();
+      return;
+    }
+
+    if (e.key === "x" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (submitting || showDiff || showShortcutsHelp) return;
+      e.preventDefault();
+      toolbarRef?.openForDeny();
       return;
     }
 
@@ -408,6 +415,7 @@
       generalComment = comment;
       submitDecision(action, acceptMode);
     }}
+    onShowShortcuts={() => (showShortcutsHelp = true)}
   />
   <main class="main">
     <PlanViewer

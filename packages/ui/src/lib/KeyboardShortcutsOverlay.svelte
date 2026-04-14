@@ -36,26 +36,30 @@
       <tbody>
         <tr>
           <td class="key"><kbd>Shift</kbd> + <kbd>Tab</kbd></td>
-          <td>Accept plan</td>
+          <td>Accept plan, auto-approve edits</td>
+        </tr>
+        <tr>
+          <td class="key"><kbd>x</kbd></td>
+          <td>Request changes</td>
         </tr>
         <tr>
           <td class="key"><kbd>c</kbd></td>
           <td>Open review panel / comment</td>
         </tr>
         <tr>
-          <td class="key"><kbd>?</kbd></td>
-          <td>Show this help</td>
+          <td class="key"
+            ><kbd>{navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}</kbd> +
+            <kbd>Enter</kbd></td
+          >
+          <td>Submit review / save comment</td>
         </tr>
         <tr>
           <td class="key"><kbd>Escape</kbd></td>
           <td>Close overlay / cancel</td>
         </tr>
         <tr>
-          <td class="key"
-            ><kbd>{navigator.platform.includes("Mac") ? "Cmd" : "Ctrl"}</kbd> +
-            <kbd>Enter</kbd></td
-          >
-          <td>Submit review / save comment</td>
+          <td class="key"><kbd>?</kbd></td>
+          <td>Show this help</td>
         </tr>
       </tbody>
     </table>
