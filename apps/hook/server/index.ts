@@ -208,6 +208,8 @@ async function waitForSSEDecision(
   }
 }
 
+class RetryableError extends Error {}
+
 async function clientPath(
   port: number,
   sessionId: string,
@@ -237,11 +239,20 @@ async function clientPath(
   console.error(
     `IPE ${VERSION} registered with server at http://localhost:${port}`,
   );
+  openBrowser(`http://localhost:${port}`);
 
+  const sseStartedAt = Date.now();
   try {
     const decision = await waitForSSEDecision(port, sessionId);
     outputDecision(decision.behavior, decision.feedback, decision.acceptMode);
   } catch (err) {
+    const elapsed = Date.now() - sseStartedAt;
+    if (elapsed < 2000) {
+      console.error(
+        `IPE: SSE failed after ${elapsed}ms — server likely died, retrying`,
+      );
+      throw new RetryableError();
+    }
     console.error(`IPE: lost connection to server: ${err}`);
     outputDecision(
       "deny",
@@ -300,8 +311,8 @@ async function main() {
   if (server) {
     // We're the server owner
     const cleanup = () => {
-      removeLock();
       server.stop();
+      removeLock();
       process.exit(0);
     };
     process.on("SIGINT", cleanup);
@@ -325,19 +336,83 @@ async function main() {
     await server.waitForDrain();
     // Grace period: allow in-flight SSE responses to be read by clients
     await new Promise((r) => setTimeout(r, 500));
-    removeLock();
     server.stop();
+    removeLock();
     setTimeout(() => process.exit(0), 50);
   } else {
     // Server already running — join as client
-    await clientPath(
-      port,
-      sessionId,
-      plan,
-      permissionMode,
-      previousPlans,
-      fileSnippets,
-    );
+    try {
+      await clientPath(
+        port,
+        sessionId,
+        plan,
+        permissionMode,
+        previousPlans,
+        fileSnippets,
+      );
+    } catch (err) {
+      if (err instanceof RetryableError) {
+        // Server likely died — wait for port to free, then retry once
+        await new Promise((r) => setTimeout(r, 300));
+        const retry = await findOrStartServer(
+          VERSION,
+          latestVersion || undefined,
+        );
+        if (retry.server) {
+          const cleanup = () => {
+            retry.server!.stop();
+            removeLock();
+            process.exit(0);
+          };
+          process.on("SIGINT", cleanup);
+          process.on("SIGTERM", cleanup);
+
+          const decisionPromise = retry.server.addSession({
+            sessionId,
+            plan,
+            permissionMode,
+            previousPlans,
+            fileSnippets,
+          });
+
+          const url = `http://localhost:${retry.port}`;
+          console.error(`IPE ${VERSION} running at ${url}`);
+          openBrowser(url);
+
+          const decision = await decisionPromise;
+          outputDecision(
+            decision.behavior,
+            decision.feedback,
+            decision.acceptMode,
+          );
+
+          await retry.server.waitForDrain();
+          await new Promise((r) => setTimeout(r, 500));
+          retry.server.stop();
+          removeLock();
+          setTimeout(() => process.exit(0), 50);
+        } else {
+          // Another server appeared — join it without further retry
+          try {
+            await clientPath(
+              retry.port,
+              sessionId,
+              plan,
+              permissionMode,
+              previousPlans,
+              fileSnippets,
+            );
+          } catch {
+            outputDecision(
+              "deny",
+              "IPE server disconnected after retry. Please retry.",
+            );
+          }
+        }
+      } else {
+        throw err;
+      }
+    }
   }
 }
 
@@ -369,11 +444,20 @@ async function diffReviewClientPath(
   console.error(
     `IPE ${VERSION} registered with server at http://localhost:${port}`,
   );
+  openBrowser(`http://localhost:${port}`);
 
+  const sseStartedAt = Date.now();
   try {
     const decision = await waitForSSEDecision(port, sessionId);
     outputDecision(decision.behavior, decision.feedback, decision.acceptMode);
   } catch (err) {
+    const elapsed = Date.now() - sseStartedAt;
+    if (elapsed < 2000) {
+      console.error(
+        `IPE: SSE failed after ${elapsed}ms — server likely died, retrying`,
+      );
+      throw new RetryableError();
+    }
     console.error(`IPE: lost connection to server: ${err}`);
     outputDecision(
       "deny",
@@ -425,8 +509,8 @@ async function diffReviewMain() {
 
   if (server) {
     const cleanup = () => {
-      removeLock();
       server.stop();
+      removeLock();
       process.exit(0);
     };
     process.on("SIGINT", cleanup);
@@ -450,11 +534,67 @@ async function diffReviewMain() {
 
     await server.waitForDrain();
     await new Promise((r) => setTimeout(r, 500));
-    removeLock();
     server.stop();
+    removeLock();
     setTimeout(() => process.exit(0), 50);
   } else {
-    await diffReviewClientPath(port, sessionId, fileDiffs, cwd);
+    try {
+      await diffReviewClientPath(port, sessionId, fileDiffs, cwd);
+    } catch (err) {
+      if (err instanceof RetryableError) {
+        await new Promise((r) => setTimeout(r, 300));
+        const retry = await findOrStartServer(
+          VERSION,
+          latestVersion || undefined,
+        );
+        if (retry.server) {
+          const cleanup = () => {
+            retry.server!.stop();
+            removeLock();
+            process.exit(0);
+          };
+          process.on("SIGINT", cleanup);
+          process.on("SIGTERM", cleanup);
+
+          const decisionPromise = retry.server.addSession({
+            sessionId,
+            plan: "",
+            permissionMode: "review",
+            mode: "diff-review",
+            fileDiffs,
+            cwd,
+          });
+
+          const url = `http://localhost:${retry.port}`;
+          console.error(`IPE ${VERSION} running at ${url}`);
+          openBrowser(url);
+
+          const decision = await decisionPromise;
+          outputDecision(
+            decision.behavior,
+            decision.feedback,
+            decision.acceptMode,
+          );
+
+          await retry.server.waitForDrain();
+          await new Promise((r) => setTimeout(r, 500));
+          retry.server.stop();
+          removeLock();
+          setTimeout(() => process.exit(0), 50);
+        } else {
+          try {
+            await diffReviewClientPath(retry.port, sessionId, fileDiffs, cwd);
+          } catch {
+            outputDecision(
+              "deny",
+              "IPE server disconnected after retry. Please retry.",
+            );
+          }
+        }
+      } else {
+        throw err;
+      }
+    }
   }
 }
 

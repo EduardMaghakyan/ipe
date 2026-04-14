@@ -269,4 +269,51 @@ describe("multi-session hook flow", () => {
     expect(outA.hookSpecificOutput.decision.behavior).toBe("allow");
     expect(outB.hookSpecificOutput.decision.behavior).toBe("allow");
   }, 15000);
+
+  test("client recovers when server dies during SSE wait", async () => {
+    const port = getUniquePort();
+
+    // Hook 1 starts as server owner
+    const hook1 = spawnHook(
+      makeInput("# Plan 1\n\nFirst", "plan", "die-1"),
+      port,
+    );
+    await waitForServer(hook1.proc.stderr as ReadableStream);
+
+    // Hook 2 joins as client
+    const hook2 = spawnHook(
+      makeInput("# Plan 2\n\nSecond", "plan", "die-2"),
+      port,
+    );
+    await waitForRegistered(hook2.proc.stderr as ReadableStream);
+
+    // Kill server owner immediately — client's SSE breaks
+    hook1.proc.kill();
+    await hook1.proc.exited;
+
+    // Hook 2 should recover: start its own server and become owner
+    // waitForServer reads stderr for "running at" from the retry path
+    const { port: newPort } = await waitForServer(
+      hook2.proc.stderr as ReadableStream,
+    );
+
+    // Approve hook2's session on the new server
+    await fetch(`http://localhost:${newPort}/api/sessions/die-2/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback: "" }),
+    });
+
+    const exitCode = await Promise.race([
+      hook2.proc.exited,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("hook2 timeout")), 5000),
+      ),
+    ]);
+    expect(exitCode).toBe(0);
+
+    const out2 = await hook2.stdout();
+    const output2 = JSON.parse(out2.trim());
+    expect(output2.hookSpecificOutput.decision.behavior).toBe("allow");
+  }, 15000);
 });
