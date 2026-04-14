@@ -158,7 +158,7 @@
     ) {
       if (submitting || showShortcutsHelp) return;
       e.preventDefault();
-      submitDecision("approve", "normal");
+      submitDecision("approve", "auto-approve");
       return;
     }
 
@@ -168,6 +168,13 @@
       if (showShortcutsHelp) return;
       e.preventDefault();
       reviewDropdownRef?.openAndFocusComment();
+      return;
+    }
+
+    if (e.key === "x" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (submitting || showShortcutsHelp) return;
+      e.preventDefault();
+      reviewDropdownRef?.openForDeny();
       return;
     }
 
@@ -256,6 +263,12 @@
       {/if}
     </div>
     <div class="toolbar-right">
+      <button
+        class="shortcuts-btn"
+        onclick={() => (showShortcutsHelp = true)}
+        aria-label="Keyboard shortcuts"
+        title="Keyboard shortcuts">?</button
+      >
       <button class="theme-toggle" onclick={onToggleTheme}>
         {theme === "dark" ? "\u2600" : "\u263E"}
       </button>
@@ -372,6 +385,21 @@
     font-size: 0.75rem;
     color: var(--color-text-muted);
     font-style: italic;
+  }
+  .shortcuts-btn {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    color: var(--color-text-muted);
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1;
+  }
+  .shortcuts-btn:hover {
+    background: var(--color-bg-overlay);
+    color: var(--color-text-default);
   }
   .theme-toggle {
     background: transparent;

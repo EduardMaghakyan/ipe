@@ -25,6 +25,7 @@
       generalComment: string,
       acceptMode?: "normal" | "auto-approve",
     ) => void;
+    onShowShortcuts: () => void;
   }
 
   let {
@@ -46,6 +47,7 @@
     generalComment,
     onCommentChange,
     onSubmit,
+    onShowShortcuts,
   }: Props = $props();
 
   let multiSession = $derived(sessions.length > 1);
@@ -54,6 +56,10 @@
 
   export function openAndFocusComment() {
     reviewDropdownRef?.openAndFocusComment();
+  }
+
+  export function openForDeny() {
+    reviewDropdownRef?.openForDeny();
   }
 
   let upgrading = $state(false);
@@ -125,6 +131,12 @@
     {/if}
   </div>
   <div class="toolbar-right">
+    <button
+      class="btn btn-icon"
+      onclick={onShowShortcuts}
+      aria-label="Keyboard shortcuts"
+      title="Keyboard shortcuts">?</button
+    >
     <button
       class="btn btn-secondary"
       onclick={onToggleTheme}
@@ -276,6 +288,18 @@
     font-weight: 500;
     cursor: pointer;
     transition: background 0.15s;
+  }
+  .btn-icon {
+    background: transparent;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+    padding: 6px 10px;
+    font-weight: 600;
+  }
+  .btn-icon:hover {
+    background: var(--color-bg-overlay);
+    color: var(--color-text-default);
   }
   .btn-secondary {
     background: transparent;
