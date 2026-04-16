@@ -71,6 +71,11 @@ mkdir -p "$IPE_DIR"
 curl -fSL "$DOWNLOAD_URL" -o "$IPE_DIR/ipe"
 chmod +x "$IPE_DIR/ipe"
 
+# Ad-hoc sign on macOS to satisfy Gatekeeper/provenance checks
+if [ "$OS" = "Darwin" ] && command -v codesign >/dev/null 2>&1; then
+  codesign -f -s - "$IPE_DIR/ipe" 2>/dev/null || warn "Ad-hoc signing failed — binary may be blocked by macOS"
+fi
+
 # Install /diff-review command
 info "Installing /diff-review command..."
 COMMANDS_DIR="$HOME/.claude/commands"
