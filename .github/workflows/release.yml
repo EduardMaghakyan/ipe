@@ -69,6 +69,10 @@ jobs:
 
       - run: bun run build
 
+      - name: Ad-hoc sign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign -s - ipe
+
       - name: Rename binary
         shell: bash
         run: mv ipe${{ matrix.ext }} ipe-${{ matrix.target }}${{ matrix.ext }}
