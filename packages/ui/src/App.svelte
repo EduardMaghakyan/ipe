@@ -14,6 +14,7 @@
   import PlanViewer from "./lib/PlanViewer.svelte";
   import DiffOverlay from "./lib/DiffOverlay.svelte";
   import DiffReviewApp from "./lib/DiffReviewApp.svelte";
+  import AskUserQuestionApp from "./lib/AskUserQuestionApp.svelte";
   import KeyboardShortcutsOverlay from "./lib/KeyboardShortcutsOverlay.svelte";
   import { isEditableTarget } from "./utils/keyboard";
 
@@ -243,6 +244,7 @@
     sessions.find((s) => s.sessionId === activeSessionId) ?? null,
   );
   let isDiffReview = $derived(activeSession?.mode === "diff-review");
+  let isAsk = $derived(activeSession?.mode === "ask");
   let versions = $derived(activeSession?.previousPlans ?? []);
 
   let inlineDiffLines = $derived.by<CollapsedDiffItem[] | null>(() => {
@@ -373,6 +375,8 @@
   <div class="loading">Submitting...</div>
 {:else if !activeSession}
   <div class="loading">No pending plans.</div>
+{:else if isAsk}
+  <AskUserQuestionApp session={activeSession} {sessions} {activeSessionId} {theme} onToggleTheme={toggleTheme} onSelectSession={switchSession} />
 {:else if isDiffReview}
   <DiffReviewApp session={activeSession} {theme} onToggleTheme={toggleTheme} />
 {:else}
