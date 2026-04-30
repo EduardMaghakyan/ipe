@@ -1,319 +1,276 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, afterEach } from "bun:test";
+import { mkdtempSync, rmSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
+import {
+  nextUniquePort,
+  spawnHook,
+  waitForRegistered,
+  readHelperPid,
+  killHelper,
+  makeHookInput,
+} from "./_helpers";
 
-const HOOK_ENTRY = "apps/hook/server/index.ts";
+const sessionLockDirs: string[] = [];
 
-let nextPort = 19550; // Start high to avoid conflicts with real IPE
-
-function getUniquePort(): number {
-  return nextPort++;
-}
-
-function makeInput(
-  plan: string,
-  permissionMode = "default",
-  sessionId?: string,
-) {
-  return JSON.stringify({
-    tool_input: { plan },
-    permission_mode: permissionMode,
-    session_id: sessionId,
-  });
-}
-
-function spawnHook(stdinData: string, port: number) {
-  const proc = Bun.spawn(["bun", HOOK_ENTRY], {
-    stdin: new Blob([stdinData]),
-    stdout: "pipe",
-    stderr: "pipe",
-    env: {
-      ...process.env,
-      IPE_BROWSER: "true",
-      IPE_PORT: String(port),
-    },
-  });
-  return {
-    proc,
-    stdout: async () => new Response(proc.stdout).text(),
-    stderr: async () => new Response(proc.stderr).text(),
-  };
-}
-
-async function waitForServer(
-  stderrStream: ReadableStream,
-): Promise<{ port: number }> {
-  const reader = stderrStream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) throw new Error("stderr stream ended before server started");
-    buffer += decoder.decode(value, { stream: true });
-    const match = buffer.match(/running at http:\/\/localhost:(\d+)/);
-    if (match) {
-      reader.releaseLock();
-      return { port: parseInt(match[1], 10) };
+afterEach(async () => {
+  for (const dir of sessionLockDirs.splice(0)) {
+    await killHelper(dir);
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // ignore
     }
   }
-}
+});
 
-async function waitForRegistered(stderrStream: ReadableStream): Promise<void> {
-  const reader = stderrStream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) throw new Error("stderr stream ended before registration");
-    buffer += decoder.decode(value, { stream: true });
-    if (buffer.includes("registered with server")) {
-      reader.releaseLock();
-      return;
-    }
-  }
+function freshLockDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "ipe-multi-"));
+  sessionLockDirs.push(dir);
+  return dir;
 }
 
 describe("multi-session hook flow", () => {
-  test("two hooks share one server, both get independent decisions", async () => {
-    const port = getUniquePort();
+  test("two hooks share one helper, both get independent decisions", async () => {
+    const lockDir = freshLockDir();
+    const port = nextUniquePort();
 
-    // Start hook 1 (server owner)
-    const hook1 = spawnHook(
-      makeInput("# Plan A\n\nDo thing A", "plan", "session-1"),
+    const hook1 = spawnHook({
+      stdinData: makeHookInput({
+        plan: "# Plan A\n\nDo thing A",
+        sessionId: "session-1",
+      }),
       port,
-    );
-    const { port: actualPort } = await waitForServer(
+      lockDir,
+    });
+    const { port: helperPort } = await waitForRegistered(
       hook1.proc.stderr as ReadableStream,
     );
-    expect(actualPort).toBe(port);
+    expect(helperPort).toBe(port);
 
-    // Start hook 2 (client)
-    const hook2 = spawnHook(
-      makeInput("# Plan B\n\nDo thing B", "plan", "session-2"),
+    const hook2 = spawnHook({
+      stdinData: makeHookInput({
+        plan: "# Plan B\n\nDo thing B",
+        sessionId: "session-2",
+      }),
       port,
-    );
+      lockDir,
+    });
     await waitForRegistered(hook2.proc.stderr as ReadableStream);
 
-    // Both sessions should be visible
     const sessionsRes = await fetch(`http://localhost:${port}/api/sessions`);
-    const sessions = await sessionsRes.json();
-    expect(sessions).toHaveLength(2);
-    expect(sessions.map((s: any) => s.sessionId).sort()).toEqual([
+    const sessions = (await sessionsRes.json()) as { sessionId: string }[];
+    expect(sessions.map((s) => s.sessionId).sort()).toEqual([
       "session-1",
       "session-2",
     ]);
 
-    // Approve session 1
     await fetch(`http://localhost:${port}/api/sessions/session-1/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feedback: "Good" }),
     });
-
-    // Deny session 2
     await fetch(`http://localhost:${port}/api/sessions/session-2/deny`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feedback: "Needs work" }),
     });
 
-    // Hook 2 should exit with deny decision
-    await hook2.proc.exited;
-    const stdout2 = await hook2.stdout();
-    const output2 = JSON.parse(stdout2.trim());
-    expect(output2.hookSpecificOutput.decision.behavior).toBe("deny");
-    expect(output2.hookSpecificOutput.decision.message).toBe("Needs work");
+    await Promise.all([hook1.proc.exited, hook2.proc.exited]);
 
-    // Hook 1 should also exit (all sessions resolved)
-    const exitCode1 = await Promise.race([
-      hook1.proc.exited,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("hook1 did not exit")), 3000),
-      ),
-    ]);
-    expect(exitCode1).toBe(0);
+    const out1 = JSON.parse((await hook1.stdout()).trim());
+    const out2 = JSON.parse((await hook2.stdout()).trim());
+    expect(out1.hookSpecificOutput.decision.behavior).toBe("allow");
+    expect(out2.hookSpecificOutput.decision.behavior).toBe("deny");
+    expect(out2.hookSpecificOutput.decision.message).toBe("Needs work");
+  }, 15000);
 
-    const stdout1 = await hook1.stdout();
-    const output1 = JSON.parse(stdout1.trim());
-    expect(output1.hookSpecificOutput.decision.behavior).toBe("allow");
-  }, 10000);
+  test("killing the hook does not stop the helper", async () => {
+    const lockDir = freshLockDir();
+    const port = nextUniquePort();
 
-  test("single session still works", async () => {
-    const port = getUniquePort();
-
-    const hook = spawnHook(
-      makeInput("# Test Plan\n\nDo the thing", "plan", "solo"),
+    const hook1 = spawnHook({
+      stdinData: makeHookInput({
+        plan: "# Plan\n\nFirst",
+        sessionId: "kill-1",
+      }),
       port,
-    );
-    await waitForServer(hook.proc.stderr as ReadableStream);
-
-    await fetch(`http://localhost:${port}/api/sessions/solo/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ feedback: "" }),
+      lockDir,
     });
+    await waitForRegistered(hook1.proc.stderr as ReadableStream);
 
-    const exitCode = await Promise.race([
-      hook.proc.exited,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("hook did not exit")), 3000),
-      ),
-    ]);
-    expect(exitCode).toBe(0);
+    const helperPidBefore = readHelperPid(lockDir);
+    expect(typeof helperPidBefore).toBe("number");
 
-    const stdout = await hook.stdout();
-    const output = JSON.parse(stdout.trim());
-    expect(output.hookSpecificOutput.decision.behavior).toBe("allow");
-  }, 10000);
-
-  test("server crash recovery — new hook takes over", async () => {
-    const port = getUniquePort();
-
-    // Start hook 1
-    const hook1 = spawnHook(
-      makeInput("# Plan 1\n\nFirst", "plan", "crash-1"),
-      port,
-    );
-    await waitForServer(hook1.proc.stderr as ReadableStream);
-
-    // Kill hook 1 (simulates crash — port is released)
+    // Kill the hook — its parent process. Helper must survive.
     hook1.proc.kill();
     await hook1.proc.exited;
 
-    // Wait a moment for port to be released
+    // Helper still alive and serving.
     await new Promise((r) => setTimeout(r, 200));
+    const health = await fetch(`http://localhost:${port}/api/health`);
+    expect(health.ok).toBe(true);
+    const helperPidAfter = readHelperPid(lockDir);
+    expect(helperPidAfter).toBe(helperPidBefore!);
 
-    // Start hook 2 — should become server owner on same port
-    const hook2 = spawnHook(
-      makeInput("# Plan 2\n\nSecond", "plan", "crash-2"),
+    // A fresh hook can join the same helper.
+    const hook2 = spawnHook({
+      stdinData: makeHookInput({
+        plan: "# Plan\n\nSecond",
+        sessionId: "kill-2",
+      }),
       port,
-    );
-    const { port: newPort } = await waitForServer(
-      hook2.proc.stderr as ReadableStream,
-    );
-    expect(newPort).toBe(port);
-
-    // Approve and verify
-    await fetch(`http://localhost:${port}/api/sessions/crash-2/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ feedback: "" }),
+      lockDir,
     });
-
-    const exitCode = await Promise.race([
-      hook2.proc.exited,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("hook2 did not exit")), 3000),
-      ),
-    ]);
-    expect(exitCode).toBe(0);
-  }, 10000);
-
-  test("simultaneous startup — one becomes owner, other becomes client", async () => {
-    const port = getUniquePort();
-
-    // Spawn both at the exact same time
-    const hookA = spawnHook(
-      makeInput("# Plan A\n\nAlpha", "plan", "sim-a"),
-      port,
-    );
-    const hookB = spawnHook(
-      makeInput("# Plan B\n\nBeta", "plan", "sim-b"),
-      port,
-    );
-
-    // Wait for both to be ready (one as server, one as client)
-    // We don't know which is which, so wait for both stderr messages
-    const stderrA = new Response(hookA.proc.stderr).text();
-    const stderrB = new Response(hookB.proc.stderr).text();
-
-    // Wait until both sessions are registered
-    const waitForSessions = async () => {
-      for (let i = 0; i < 50; i++) {
-        try {
-          const res = await fetch(`http://localhost:${port}/api/sessions`);
-          if (res.ok) {
-            const sessions = await res.json();
-            if ((sessions as any[]).length === 2) return sessions;
-          }
-        } catch {
-          // server not ready yet
-        }
-        await new Promise((r) => setTimeout(r, 100));
-      }
-      throw new Error("Timed out waiting for both sessions");
-    };
-
-    const sessions = await waitForSessions();
-    const ids = (sessions as any[]).map((s: any) => s.sessionId).sort();
-    expect(ids).toEqual(["sim-a", "sim-b"]);
-
-    // Resolve both
-    await fetch(`http://localhost:${port}/api/sessions/sim-a/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ feedback: "" }),
-    });
-    await fetch(`http://localhost:${port}/api/sessions/sim-b/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ feedback: "" }),
-    });
-
-    await Promise.all([hookA.proc.exited, hookB.proc.exited]);
-
-    await stderrA;
-    const outA = JSON.parse((await hookA.stdout()).trim());
-    await stderrB;
-    const outB = JSON.parse((await hookB.stdout()).trim());
-    expect(outA.hookSpecificOutput.decision.behavior).toBe("allow");
-    expect(outB.hookSpecificOutput.decision.behavior).toBe("allow");
-  }, 15000);
-
-  test("client recovers when server dies during SSE wait", async () => {
-    const port = getUniquePort();
-
-    // Hook 1 starts as server owner
-    const hook1 = spawnHook(
-      makeInput("# Plan 1\n\nFirst", "plan", "die-1"),
-      port,
-    );
-    await waitForServer(hook1.proc.stderr as ReadableStream);
-
-    // Hook 2 joins as client
-    const hook2 = spawnHook(
-      makeInput("# Plan 2\n\nSecond", "plan", "die-2"),
-      port,
-    );
     await waitForRegistered(hook2.proc.stderr as ReadableStream);
 
-    // Kill server owner immediately — client's SSE breaks
-    hook1.proc.kill();
-    await hook1.proc.exited;
-
-    // Hook 2 should recover: start its own server and become owner
-    // waitForServer reads stderr for "running at" from the retry path
-    const { port: newPort } = await waitForServer(
-      hook2.proc.stderr as ReadableStream,
-    );
-
-    // Approve hook2's session on the new server
-    await fetch(`http://localhost:${newPort}/api/sessions/die-2/approve`, {
+    await fetch(`http://localhost:${port}/api/sessions/kill-2/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ feedback: "" }),
     });
+    await hook2.proc.exited;
 
-    const exitCode = await Promise.race([
-      hook2.proc.exited,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("hook2 timeout")), 5000),
-      ),
-    ]);
-    expect(exitCode).toBe(0);
-
-    const out2 = await hook2.stdout();
-    const output2 = JSON.parse(out2.trim());
-    expect(output2.hookSpecificOutput.decision.behavior).toBe("allow");
+    const out2 = JSON.parse((await hook2.stdout()).trim());
+    expect(out2.hookSpecificOutput.decision.behavior).toBe("allow");
   }, 15000);
+
+  test("duplicate POST with same sessionId is idempotent (no second session created)", async () => {
+    const lockDir = freshLockDir();
+    const port = nextUniquePort();
+
+    const hook = spawnHook({
+      stdinData: makeHookInput({
+        plan: "# Plan\n\nDup",
+        sessionId: "dup-1",
+      }),
+      port,
+      lockDir,
+    });
+    await waitForRegistered(hook.proc.stderr as ReadableStream);
+
+    // Manual second POST with the same sessionId — server must dedupe.
+    const dup = await fetch(`http://localhost:${port}/api/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: "dup-1",
+        plan: "# Plan\n\nDup",
+        permissionMode: "default",
+      }),
+    });
+    const dupBody = (await dup.json()) as { ok: boolean; deduped?: boolean };
+    expect(dupBody.ok).toBe(true);
+    expect(dupBody.deduped).toBe(true);
+
+    const list = (await (
+      await fetch(`http://localhost:${port}/api/sessions`)
+    ).json()) as unknown[];
+    expect(list).toHaveLength(1);
+
+    await fetch(`http://localhost:${port}/api/sessions/dup-1/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback: "" }),
+    });
+    await hook.proc.exited;
+  }, 15000);
+
+  test("POST during draining returns 503", async () => {
+    const lockDir = freshLockDir();
+    const port = nextUniquePort();
+
+    const hook = spawnHook({
+      stdinData: makeHookInput({
+        plan: "# Plan\n\nDrain",
+        sessionId: "drain-1",
+      }),
+      port,
+      lockDir,
+    });
+    await waitForRegistered(hook.proc.stderr as ReadableStream);
+
+    // Resolve the in-flight session so the hook exits cleanly later.
+    await fetch(`http://localhost:${port}/api/sessions/drain-1/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback: "" }),
+    });
+    await hook.proc.exited;
+
+    // Trigger helper shutdown — sets draining=true synchronously.
+    await fetch(`http://localhost:${port}/api/shutdown`, { method: "POST" });
+
+    // Immediate POST against the still-listening helper must get 503.
+    const res = await fetch(`http://localhost:${port}/api/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: "drain-late",
+        plan: "# x",
+        permissionMode: "default",
+      }),
+    });
+    expect(res.status).toBe(503);
+  }, 15000);
+
+  test("hook respawns helper when lock points to a dead PID", async () => {
+    const lockDir = freshLockDir();
+    const port = nextUniquePort();
+
+    // Boot a helper, then SIGKILL it so the lock points to a dead PID.
+    const hook1 = spawnHook({
+      stdinData: makeHookInput({
+        plan: "# Plan\n\nA",
+        sessionId: "stale-1",
+      }),
+      port,
+      lockDir,
+    });
+    await waitForRegistered(hook1.proc.stderr as ReadableStream);
+    const oldPid = readHelperPid(lockDir)!;
+    expect(oldPid).toBeGreaterThan(0);
+
+    // Approve so hook 1 exits cleanly, then SIGKILL the helper to leave a
+    // stale lock.
+    await fetch(`http://localhost:${port}/api/sessions/stale-1/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback: "" }),
+    });
+    await hook1.proc.exited;
+    try {
+      process.kill(oldPid, "SIGKILL");
+    } catch {
+      // already gone
+    }
+    // Wait until port is free.
+    for (let i = 0; i < 50; i++) {
+      const h = await fetch(`http://localhost:${port}/api/health`).catch(
+        () => null,
+      );
+      if (!h) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+
+    // New hook should detect stale lock, spawn a fresh helper.
+    const hook2 = spawnHook({
+      stdinData: makeHookInput({
+        plan: "# Plan\n\nB",
+        sessionId: "stale-2",
+      }),
+      port,
+      lockDir,
+    });
+    await waitForRegistered(hook2.proc.stderr as ReadableStream);
+    const newPid = readHelperPid(lockDir)!;
+    expect(newPid).not.toBe(oldPid);
+
+    await fetch(`http://localhost:${port}/api/sessions/stale-2/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback: "" }),
+    });
+    await hook2.proc.exited;
+  }, 20000);
 });

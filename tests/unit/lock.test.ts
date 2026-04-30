@@ -11,14 +11,16 @@ import {
   readLock,
   writeLock,
   removeLock,
+  removeLockIfNonce,
   isProcessAlive,
-  isLockStale,
   getLockDir,
 } from "../../packages/server/lock";
 
+const NONCE_A = "nonce-aaaaaaaa";
+const NONCE_B = "nonce-bbbbbbbb";
+
 describe("lock", () => {
   beforeEach(() => {
-    // Clean lock file between tests, ensure dir exists
     removeLock();
     mkdirSync(testDir, { recursive: true });
   });
@@ -31,24 +33,25 @@ describe("lock", () => {
     expect(readLock()).toBeNull();
   });
 
-  test("writeLock creates a valid lock file", () => {
-    writeLock(19450);
+  test("writeLock creates a valid lock file with nonce and version", () => {
+    writeLock({ port: 19450, nonce: NONCE_A, version: "1.2.3" });
     const lock = readLock();
     expect(lock).not.toBeNull();
     expect(lock!.pid).toBe(process.pid);
     expect(lock!.port).toBe(19450);
+    expect(lock!.nonce).toBe(NONCE_A);
+    expect(lock!.version).toBe("1.2.3");
     expect(typeof lock!.startedAt).toBe("number");
   });
 
   test("writeLock writes atomically via .tmp", () => {
-    writeLock(19451);
-    // .tmp file should not remain
+    writeLock({ port: 19451, nonce: NONCE_A, version: "dev" });
     expect(existsSync(join(testDir, "server.lock.tmp"))).toBe(false);
     expect(existsSync(join(testDir, "server.lock"))).toBe(true);
   });
 
   test("removeLock deletes the lock file", () => {
-    writeLock(19450);
+    writeLock({ port: 19450, nonce: NONCE_A, version: "dev" });
     expect(readLock()).not.toBeNull();
     removeLock();
     expect(readLock()).toBeNull();
@@ -68,30 +71,38 @@ describe("lock", () => {
     expect(readLock()).toBeNull();
   });
 
+  test("readLock rejects legacy locks without nonce/version", () => {
+    writeFileSync(
+      join(testDir, "server.lock"),
+      JSON.stringify({ pid: process.pid, port: 19450, startedAt: Date.now() }),
+    );
+    expect(readLock()).toBeNull();
+  });
+
   test("isProcessAlive returns true for current process", () => {
     expect(isProcessAlive(process.pid)).toBe(true);
   });
 
   test("isProcessAlive returns false for non-existent PID", () => {
-    // PID 99999999 is extremely unlikely to exist
     expect(isProcessAlive(99999999)).toBe(false);
   });
 
-  test("isLockStale returns true when no lock file exists", () => {
-    expect(isLockStale()).toBe(true);
+  test("removeLockIfNonce unlinks when nonce matches", () => {
+    writeLock({ port: 19450, nonce: NONCE_A, version: "dev" });
+    expect(removeLockIfNonce(NONCE_A)).toBe(true);
+    expect(readLock()).toBeNull();
   });
 
-  test("isLockStale returns false when lock belongs to current process", () => {
-    writeLock(19450);
-    expect(isLockStale()).toBe(false);
+  test("removeLockIfNonce is a no-op when nonce differs", () => {
+    writeLock({ port: 19450, nonce: NONCE_A, version: "dev" });
+    expect(removeLockIfNonce(NONCE_B)).toBe(false);
+    const lock = readLock();
+    expect(lock).not.toBeNull();
+    expect(lock!.nonce).toBe(NONCE_A);
   });
 
-  test("isLockStale returns true when lock PID is dead", () => {
-    writeFileSync(
-      join(testDir, "server.lock"),
-      JSON.stringify({ pid: 99999999, port: 19450, startedAt: Date.now() }),
-    );
-    expect(isLockStale()).toBe(true);
+  test("removeLockIfNonce returns false when no lock exists", () => {
+    expect(removeLockIfNonce(NONCE_A)).toBe(false);
   });
 });
 

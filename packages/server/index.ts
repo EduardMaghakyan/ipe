@@ -6,6 +6,8 @@ import { runGitDiff, parseUnifiedDiff } from "./git-diff";
 
 const encoder = new TextEncoder();
 
+const RECENT_DECISION_TTL_MS = 30_000;
+
 export interface SessionInput {
   sessionId: string;
   plan: string;
@@ -44,6 +46,8 @@ interface ServerOptions {
   version?: string;
   latestVersion?: string;
   upgradeCommand?: string[];
+  nonce?: string;
+  onShutdownRequest?: () => void;
 }
 
 function extractTitle(plan: string): string {
@@ -70,11 +74,39 @@ export function startServer(options: ServerOptions = {}): {
   stop: () => void;
   addSession: (input: SessionInput) => Promise<SessionDecision>;
   waitForDrain: () => Promise<void>;
+  setDraining: (v: boolean) => void;
+  isDraining: () => boolean;
 } {
   const sessions = new Map<string, SessionState>();
   const uiSSE = new Set<ReadableStreamDefaultController>();
+  const recentDecisions = new Map<
+    string,
+    { decision: SessionDecision; expiresAt: number }
+  >();
 
   let drain: { promise: Promise<void>; resolve: () => void } | null = null;
+  let draining = false;
+
+  function rememberDecision(sessionId: string, decision: SessionDecision) {
+    const expiresAt = Date.now() + RECENT_DECISION_TTL_MS;
+    recentDecisions.set(sessionId, { decision, expiresAt });
+    setTimeout(() => {
+      const entry = recentDecisions.get(sessionId);
+      if (entry && entry.expiresAt <= Date.now()) {
+        recentDecisions.delete(sessionId);
+      }
+    }, RECENT_DECISION_TTL_MS + 100).unref?.();
+  }
+
+  function lookupRecentDecision(sessionId: string): SessionDecision | null {
+    const entry = recentDecisions.get(sessionId);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+      recentDecisions.delete(sessionId);
+      return null;
+    }
+    return entry.decision;
+  }
 
   function waitForDrain(): Promise<void> {
     if (sessions.size === 0) return Promise.resolve();
@@ -106,6 +138,8 @@ export function startServer(options: ServerOptions = {}): {
     const session = sessions.get(sessionId);
     if (!session) return false;
 
+    rememberDecision(sessionId, decision);
+
     // Notify hook SSE listeners
     const msg = `event: decision\ndata: ${JSON.stringify(decision)}\n\n`;
     for (const ctrl of [...session.hookSSE]) {
@@ -121,7 +155,6 @@ export function startServer(options: ServerOptions = {}): {
     sessions.delete(sessionId);
     broadcastUI("session-removed", { sessionId });
 
-    // Check if all sessions are done
     if (sessions.size === 0) {
       drain?.resolve();
       drain = null;
@@ -178,7 +211,19 @@ export function startServer(options: ServerOptions = {}): {
           sessions: sessions.size,
           version: options.version || "dev",
           latestVersion: options.latestVersion,
+          nonce: options.nonce,
+          draining,
         });
+      }
+
+      // Shutdown request (used by hooks on version mismatch)
+      if (req.method === "POST" && url.pathname === "/api/shutdown") {
+        draining = true;
+        if (options.onShutdownRequest) {
+          // Defer so the response can be flushed first
+          setTimeout(() => options.onShutdownRequest?.(), 0);
+        }
+        return Response.json({ ok: true });
       }
 
       // List sessions
@@ -187,17 +232,44 @@ export function startServer(options: ServerOptions = {}): {
         return Response.json(list);
       }
 
-      // Register session
+      // Register session (idempotent by sessionId; 503 while draining)
       if (req.method === "POST" && url.pathname === "/api/sessions") {
-        return req
-          .json()
-          .then((body: SessionInput) => {
-            addSession(body);
-            return Response.json({ ok: true });
-          })
-          .catch(() =>
-            Response.json({ error: "invalid request body" }, { status: 400 }),
+        if (draining) {
+          return Response.json(
+            { ok: false, error: "draining" },
+            { status: 503 },
           );
+        }
+        let body: SessionInput;
+        try {
+          body = (await req.json()) as SessionInput;
+        } catch {
+          return Response.json(
+            { error: "invalid request body" },
+            { status: 400 },
+          );
+        }
+        if (!body.sessionId) {
+          return Response.json(
+            { error: "sessionId required" },
+            { status: 400 },
+          );
+        }
+        // Recently-resolved? Replay decision so a slow client can finish.
+        const recent = lookupRecentDecision(body.sessionId);
+        if (recent) {
+          return Response.json({
+            ok: true,
+            replayed: true,
+            decision: recent,
+          });
+        }
+        // Already in progress with same id? Idempotent no-op.
+        if (sessions.has(body.sessionId)) {
+          return Response.json({ ok: true, deduped: true });
+        }
+        addSession(body);
+        return Response.json({ ok: true });
       }
 
       // UI SSE
@@ -207,7 +279,6 @@ export function startServer(options: ServerOptions = {}): {
           start(controller) {
             ctrl = controller;
             uiSSE.add(controller);
-            // Send current sessions as initial data
             const list = Array.from(sessions.values()).map(sessionToSummary);
             const msg = `event: init\ndata: ${JSON.stringify(list)}\n\n`;
             controller.enqueue(encoder.encode(msg));
@@ -275,6 +346,17 @@ export function startServer(options: ServerOptions = {}): {
           }
         }
 
+        // Hook self-cancel — used when the hook's parent dies.
+        if (route.action === "cancel" && req.method === "POST") {
+          const ok = resolveSession(route.sessionId, {
+            behavior: "deny",
+            feedback: "Hook canceled (parent process exited)",
+          });
+          if (!ok)
+            return Response.json({ error: "not found" }, { status: 404 });
+          return Response.json({ ok: true });
+        }
+
         if (route.action === "refresh-diff" && req.method === "POST") {
           if (!session || session.mode !== "diff-review" || !session.cwd) {
             return Response.json({ error: "not found" }, { status: 404 });
@@ -311,6 +393,25 @@ export function startServer(options: ServerOptions = {}): {
         }
 
         if (route.action === "events" && req.method === "GET") {
+          // If the session has already resolved very recently, replay the
+          // decision so a slow-subscribing hook still gets it.
+          const recent = lookupRecentDecision(route.sessionId);
+          if (!session && recent) {
+            const stream = new ReadableStream({
+              start(controller) {
+                const msg = `event: decision\ndata: ${JSON.stringify(recent)}\n\n`;
+                controller.enqueue(encoder.encode(msg));
+                controller.close();
+              },
+            });
+            return new Response(stream, {
+              headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                Connection: "keep-alive",
+              },
+            });
+          }
           if (!session) {
             return new Response("Session not found", { status: 404 });
           }
@@ -367,5 +468,9 @@ export function startServer(options: ServerOptions = {}): {
     stop: () => server.stop(),
     addSession,
     waitForDrain,
+    setDraining: (v: boolean) => {
+      draining = v;
+    },
+    isDraining: () => draining,
   };
 }

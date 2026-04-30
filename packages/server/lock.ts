@@ -11,6 +11,8 @@ import { homedir } from "os";
 export interface LockData {
   pid: number;
   port: number;
+  nonce: string;
+  version: string;
   startedAt: number;
 }
 
@@ -31,6 +33,8 @@ export function readLock(): LockData | null {
     if (
       typeof data.pid === "number" &&
       typeof data.port === "number" &&
+      typeof data.nonce === "string" &&
+      typeof data.version === "string" &&
       typeof data.startedAt === "number"
     ) {
       return data as LockData;
@@ -41,12 +45,18 @@ export function readLock(): LockData | null {
   }
 }
 
-export function writeLock(port: number): void {
+export function writeLock(params: {
+  port: number;
+  nonce: string;
+  version: string;
+}): void {
   const dir = getLockDir();
   mkdirSync(dir, { recursive: true });
   const data: LockData = {
     pid: process.pid,
-    port,
+    port: params.port,
+    nonce: params.nonce,
+    version: params.version,
     startedAt: Date.now(),
   };
   const path = lockPath();
@@ -63,6 +73,17 @@ export function removeLock(): void {
   }
 }
 
+export function removeLockIfNonce(nonce: string): boolean {
+  const lock = readLock();
+  if (!lock || lock.nonce !== nonce) return false;
+  try {
+    unlinkSync(lockPath());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -70,10 +91,4 @@ export function isProcessAlive(pid: number): boolean {
   } catch {
     return false;
   }
-}
-
-export function isLockStale(): boolean {
-  const lock = readLock();
-  if (!lock) return true;
-  return !isProcessAlive(lock.pid);
 }
