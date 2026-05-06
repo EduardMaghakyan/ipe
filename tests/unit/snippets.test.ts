@@ -139,4 +139,19 @@ describe("resolveSnippets", () => {
     expect(snippets[0].error).toBe("File not found");
     expect(snippets[0].content).toBe("");
   });
+
+  test("enforces total resolution budget across many missing files", async () => {
+    // 200 distinct missing refs; realpath() failures are quick but we still
+    // want the loop to exit cleanly even if it would otherwise take a while.
+    const refs = Array.from(
+      { length: 200 },
+      (_, i) => `\`src/missing-${i}.ts\``,
+    ).join(" ");
+    const start = Date.now();
+    const snippets = await resolveSnippets(refs, tmpDir);
+    const elapsed = Date.now() - start;
+    // Budget cap is 5s — should never exceed it by much (allow 1s slack).
+    expect(elapsed).toBeLessThan(6000);
+    expect(snippets.length).toBe(200);
+  });
 });
