@@ -1,4 +1,9 @@
-import { type SessionDecision } from "../../../packages/server/index.ts";
+import {
+  startServer,
+  type IPEServer,
+  type SessionInput,
+  type SessionDecision,
+} from "../../../packages/server/index.ts";
 import { openBrowser } from "../../../packages/server/browser.ts";
 import { loadHistory, saveVersion } from "../../../packages/server/history.ts";
 import { checkForUpdate } from "../../../packages/server/update.ts";
@@ -9,18 +14,9 @@ import {
   parseUnifiedDiff,
   type DiffMode,
 } from "../../../packages/server/git-diff.ts";
-import {
-  readLock,
-  isProcessAlive,
-  removeLock,
-} from "../../../packages/server/lock.ts";
-import { serveMain } from "./serve.ts";
 
 const VERSION = "dev";
-const HEALTH_TIMEOUT_MS = 1000;
-const HELPER_READY_TIMEOUT_MS = 3000;
-const HELPER_POLL_INTERVAL_MS = 100;
-const POST_RETRY_BACKOFF_MS = [100, 300, 900];
+const STDIN_TIMEOUT_MS = Number(process.env.IPE_STDIN_TIMEOUT_MS) || 30_000;
 
 interface HookInput {
   tool_input: {
@@ -34,18 +30,40 @@ interface HookInput {
   [key: string]: unknown;
 }
 
-interface HelperEndpoint {
-  port: number;
-  nonce: string;
-  version: string;
-}
-
-async function readStdin(): Promise<string> {
+async function readStdinWithTimeout(timeoutMs: number): Promise<string> {
   const chunks: Buffer[] = [];
-  for await (const chunk of Bun.stdin.stream()) {
-    chunks.push(Buffer.from(chunk));
+  const reader = Bun.stdin.stream().getReader();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("stdin read timeout")),
+      timeoutMs,
+    );
+  });
+  try {
+    while (true) {
+      const { value, done } = await Promise.race([reader.read(), timeout]);
+      if (done) break;
+      if (value) chunks.push(Buffer.from(value));
+    }
+  } finally {
+    clearTimeout(timer);
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore
+    }
   }
   return Buffer.concat(chunks).toString("utf-8");
+}
+
+// Bootstrap signal handler: covers the window between process start and the
+// moment runOneShotReview has wired session-aware handlers. Without this, a
+// SIGTERM during stdin read or snippet resolution would default-kill the
+// process and Claude Code would see an empty stdout.
+function bootstrapSignalHandler(): void {
+  outputDecision("deny", "IPE: hook canceled before review started");
+  process.exit(0);
 }
 
 function outputDecision(
@@ -71,323 +89,103 @@ function outputDecision(
   process.stdout.write(JSON.stringify(output) + "\n");
 }
 
-interface HealthResponse {
-  ok: boolean;
-  version?: string;
-  nonce?: string;
-  draining?: boolean;
-}
-
-async function fetchHealth(port: number): Promise<HealthResponse | null> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
-    const res = await fetch(`http://localhost:${port}/api/health`, {
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!res.ok) return null;
-    const data = (await res.json()) as HealthResponse;
-    if (data?.ok !== true) return null;
-    return data;
-  } catch {
-    return null;
-  }
-}
-
-function helperSpawnArgs(): string[] {
-  // process.execPath is always the real on-disk binary path (bun in dev,
-  // the compiled `ipe` binary in production). process.argv[1], when it
-  // looks like a script file, signals dev mode and must be re-passed.
-  const argv1 = process.argv[1] || "";
-  const looksLikeScript =
-    argv1.endsWith(".ts") || argv1.endsWith(".js") || argv1.endsWith(".mjs");
-  if (looksLikeScript) {
-    return [process.execPath, argv1, "serve"];
-  }
-  return [process.execPath, "serve"];
-}
-
-function spawnHelper(): void {
-  const args = helperSpawnArgs();
-  const child = Bun.spawn(args, {
-    stdin: "ignore",
-    stdout: "ignore",
-    stderr: "ignore",
-    env: process.env as Record<string, string>,
-  });
-  // Detach: don't keep parent alive waiting on child.
-  child.unref?.();
-}
-
-async function waitForHelperReady(): Promise<HelperEndpoint | null> {
-  const deadline = Date.now() + HELPER_READY_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const lock = readLock();
-    if (lock && isProcessAlive(lock.pid)) {
-      const health = await fetchHealth(lock.port);
-      if (health && health.nonce === lock.nonce) {
-        return {
-          port: lock.port,
-          nonce: lock.nonce,
-          version: health.version || lock.version,
-        };
+function startServerWithFallback(
+  preferredPort: number | undefined,
+  latestVersion: string | undefined,
+): IPEServer {
+  if (preferredPort !== undefined) {
+    try {
+      return startServer({
+        port: preferredPort,
+        version: VERSION,
+        latestVersion,
+      });
+    } catch (err: unknown) {
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? (err as { code: string }).code
+          : undefined;
+      if (code === "EADDRINUSE") {
+        console.error(
+          `IPE: port ${preferredPort} in use, falling back to ephemeral port`,
+        );
+      } else {
+        // Unknown error shape — log it and still fall back. Failing to fall
+        // back means the user's plan gets denied because of a port issue,
+        // which is worse UX than running on an OS-assigned port.
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(
+          `IPE: failed to bind preferred port ${preferredPort} (${message}); falling back to ephemeral port`,
+        );
       }
     }
-    await new Promise((r) => setTimeout(r, HELPER_POLL_INTERVAL_MS));
   }
-  return null;
+  return startServer({ version: VERSION, latestVersion });
 }
 
-async function findOrSpawnHelper(): Promise<HelperEndpoint> {
-  // Try existing helper first.
-  const lock = readLock();
-  if (lock && isProcessAlive(lock.pid)) {
-    const health = await fetchHealth(lock.port);
-    if (health && health.nonce === lock.nonce) {
-      return {
-        port: lock.port,
-        nonce: lock.nonce,
-        version: health.version || lock.version,
-      };
-    }
-    // Lock points to live PID but health/nonce mismatch — stale. Clean up.
-    removeLock();
-  } else if (lock) {
-    // Dead PID lock — clean up.
-    removeLock();
-  }
-
-  spawnHelper();
-  const ready = await waitForHelperReady();
-  if (!ready) {
-    throw new Error("IPE helper did not become ready in time");
-  }
-  return ready;
+function getPreferredPort(): number | undefined {
+  const envPort = process.env.IPE_PORT;
+  if (!envPort) return undefined;
+  const parsed = parseInt(envPort, 10);
+  if (isNaN(parsed) || parsed <= 0) return undefined;
+  return parsed;
 }
 
-async function ensureHelperVersion(
-  endpoint: HelperEndpoint,
-): Promise<HelperEndpoint> {
-  if (endpoint.version === VERSION || VERSION === "dev") {
-    return endpoint;
-  }
-  console.error(
-    `IPE: helper version=${endpoint.version} differs from hook=${VERSION}, restarting helper`,
-  );
-  try {
-    await fetch(`http://localhost:${endpoint.port}/api/shutdown`, {
-      method: "POST",
-    });
-  } catch {
-    // ignore — helper might already be exiting
-  }
-  // Wait for the helper to release the lock, then spawn fresh.
-  const deadline = Date.now() + HELPER_READY_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const lock = readLock();
-    if (!lock || lock.nonce !== endpoint.nonce) break;
-    await new Promise((r) => setTimeout(r, HELPER_POLL_INTERVAL_MS));
-  }
-  return findOrSpawnHelper();
-}
-
-interface PostResult {
-  status: "registered" | "deduped" | "replayed";
-  decision?: SessionDecision;
-}
-
-async function postSession(
-  port: number,
-  body: Record<string, unknown>,
-): Promise<{ ok: true; result: PostResult } | { ok: false; status?: number }> {
-  let res: Response;
-  try {
-    res = await fetch(`http://localhost:${port}/api/sessions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    return { ok: false };
-  }
-  if (!res.ok) return { ok: false, status: res.status };
-  const data = (await res.json()) as {
-    ok?: boolean;
-    deduped?: boolean;
-    replayed?: boolean;
-    decision?: SessionDecision;
-  };
-  if (data.replayed && data.decision) {
-    return {
-      ok: true,
-      result: { status: "replayed", decision: data.decision },
-    };
-  }
-  if (data.deduped) {
-    return { ok: true, result: { status: "deduped" } };
-  }
-  return { ok: true, result: { status: "registered" } };
-}
-
-async function registerSession(
-  body: Record<string, unknown>,
-): Promise<{ endpoint: HelperEndpoint; result: PostResult }> {
-  let endpoint = await findOrSpawnHelper();
-  endpoint = await ensureHelperVersion(endpoint);
-
-  for (let attempt = 0; attempt < POST_RETRY_BACKOFF_MS.length; attempt++) {
-    const post = await postSession(endpoint.port, body);
-    if (post.ok) {
-      return { endpoint, result: post.result };
-    }
-    // 503 → helper draining; respawn and retry.
-    // network error → helper died; respawn and retry.
-    await new Promise((r) =>
-      setTimeout(r, POST_RETRY_BACKOFF_MS[attempt] || 900),
-    );
-    endpoint = await findOrSpawnHelper();
-  }
-  throw new Error("Failed to register session with IPE helper after retries");
-}
-
-async function waitForSSEDecision(
-  port: number,
-  sessionId: string,
+async function runOneShotReview(
+  input: SessionInput,
+  latestVersion: string | undefined,
 ): Promise<SessionDecision> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4 * 24 * 60 * 60 * 1000);
-  try {
-    const res = await fetch(
-      `http://localhost:${port}/api/sessions/${encodeURIComponent(sessionId)}/events`,
-      { signal: controller.signal },
-    );
-    if (!res.ok || !res.body) {
-      throw new Error(`SSE connection failed: ${res.status} ${res.statusText}`);
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) throw new Error("SSE stream ended without decision");
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        for (let i = 0; i < lines.length - 1; i++) {
-          const line = lines[i];
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            try {
-              return JSON.parse(data) as SessionDecision;
-            } catch {
-              // not the event we're looking for
-            }
-          }
-        }
-        buffer = lines[lines.length - 1];
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  } finally {
-    clearTimeout(timeout);
-  }
-}
+  const server = startServerWithFallback(getPreferredPort(), latestVersion);
+  const decisionPromise = server.addSession(input);
 
-function registerCancel(port: number, sessionId: string): () => void {
-  let canceled = false;
-  const cancel = () => {
-    if (canceled) return;
-    canceled = true;
-    try {
-      // Fire-and-forget; we're about to exit anyway.
-      void fetch(
-        `http://localhost:${port}/api/sessions/${encodeURIComponent(sessionId)}/cancel`,
-        { method: "POST" },
-      );
-    } catch {
-      // ignore
-    }
-  };
+  // We swap the bootstrap fallback handler (registered in main()) for one
+  // that resolves the in-flight session as `deny`, so the await below
+  // unblocks and the finally clause stops the server cleanly.
+  process.off("SIGINT", bootstrapSignalHandler);
+  process.off("SIGTERM", bootstrapSignalHandler);
   const onSignal = () => {
-    cancel();
-    process.exit(0);
+    server.resolveSession(input.sessionId, {
+      behavior: "deny",
+      feedback: "Hook canceled (parent process exited)",
+    });
   };
-  process.on("SIGINT", onSignal);
-  process.on("SIGTERM", onSignal);
-  return cancel;
-}
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
 
-async function runReviewSession(body: {
-  sessionId: string;
-  plan: string;
-  permissionMode: string;
-  previousPlans?: unknown;
-  fileSnippets?: unknown;
-  mode?: string;
-  fileDiffs?: unknown;
-  cwd?: string;
-}): Promise<void> {
-  const { endpoint, result } = await registerSession(body);
-
-  // If the helper replayed a recent decision, we're done immediately.
-  if (result.status === "replayed" && result.decision) {
-    outputDecision(
-      result.decision.behavior,
-      result.decision.feedback,
-      result.decision.acceptMode,
-    );
-    return;
-  }
-
-  const url = `http://localhost:${endpoint.port}`;
+  const url = `http://localhost:${server.port}`;
   console.error(
-    `IPE ${VERSION} registered with helper at ${url} (status=${result.status})`,
+    `IPE ${VERSION} listening on ${url} (session=${input.sessionId})`,
   );
   openBrowser(url);
-  registerCancel(endpoint.port, body.sessionId);
 
   try {
-    const decision = await waitForSSEDecision(endpoint.port, body.sessionId);
-    outputDecision(decision.behavior, decision.feedback, decision.acceptMode);
-  } catch (err) {
-    // SSE dropped mid-wait. Re-register against (possibly fresh) helper —
-    // the POST is idempotent and the recentDecisions cache will replay if
-    // the session resolved during the gap.
-    console.error(`IPE: SSE dropped (${err}); reattaching`);
-    const retry = await registerSession(body);
-    if (retry.result.status === "replayed" && retry.result.decision) {
-      outputDecision(
-        retry.result.decision.behavior,
-        retry.result.decision.feedback,
-        retry.result.decision.acceptMode,
-      );
-      return;
-    }
-    try {
-      const decision = await waitForSSEDecision(
-        retry.endpoint.port,
-        body.sessionId,
-      );
-      outputDecision(decision.behavior, decision.feedback, decision.acceptMode);
-    } catch (err2) {
-      console.error(`IPE: lost connection to helper after retry: ${err2}`);
-      outputDecision(
-        "deny",
-        "IPE helper disconnected before delivering decision. Please retry.",
-      );
-    }
+    return await decisionPromise;
+  } finally {
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
+    server.stop();
   }
 }
 
 async function main() {
-  const raw = await readStdin();
+  process.once("SIGINT", bootstrapSignalHandler);
+  process.once("SIGTERM", bootstrapSignalHandler);
+
+  let raw: string;
+  try {
+    raw = await readStdinWithTimeout(STDIN_TIMEOUT_MS);
+  } catch (err) {
+    console.error(`IPE: ${err}`);
+    outputDecision("deny", "IPE: no input received from Claude Code");
+    process.exit(1);
+  }
+
   let input: HookInput;
   try {
     input = JSON.parse(raw);
   } catch {
-    console.error("Failed to parse stdin JSON");
+    console.error("IPE: failed to parse stdin JSON");
+    outputDecision("deny", "IPE: invalid input JSON");
     process.exit(1);
   }
 
@@ -399,7 +197,7 @@ async function main() {
   console.error(`IPE: session=${sessionId} permissionMode=${permissionMode}`);
 
   if (!plan) {
-    console.error("No plan found in stdin input or on disk");
+    console.error("IPE: no plan found in stdin or on disk");
     outputDecision(
       "deny",
       "IPE could not find a plan. Ensure ~/.claude/plans/ contains a plan file.",
@@ -408,28 +206,38 @@ async function main() {
   }
 
   saveVersion(sessionId, plan);
-  const previousPlans = loadHistory(sessionId).filter((v) => v.plan !== plan);
+  // history.ts skips duplicate writes, so the current plan only appears in
+  // history if it's distinct from the prior version. Show the rest as
+  // "previous" for the diff UI.
+  const previousPlans = loadHistory(sessionId).slice(0, -1);
 
   const cwd = input.cwd || process.cwd();
   const fileSnippets = await resolveSnippets(plan, cwd);
 
-  const latestVersion = await checkForUpdate(VERSION);
+  const latestVersion = (await checkForUpdate(VERSION)) || undefined;
   if (latestVersion) {
     console.error(
       `\nIPE ${latestVersion} is available (current: ${VERSION}). Upgrade: curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash\n`,
     );
   }
 
-  await runReviewSession({
-    sessionId,
-    plan,
-    permissionMode,
-    previousPlans,
-    fileSnippets,
-  });
+  const decision = await runOneShotReview(
+    {
+      sessionId,
+      plan,
+      permissionMode,
+      previousPlans,
+      fileSnippets,
+    },
+    latestVersion,
+  );
+  outputDecision(decision.behavior, decision.feedback, decision.acceptMode);
 }
 
 async function diffReviewMain() {
+  process.once("SIGINT", bootstrapSignalHandler);
+  process.once("SIGTERM", bootstrapSignalHandler);
+
   const drIdx = process.argv.indexOf("diff-review");
   const args = drIdx >= 0 ? process.argv.slice(drIdx + 1) : [];
   let diffMode: DiffMode = "unstaged";
@@ -456,35 +264,33 @@ async function diffReviewMain() {
   console.error(`IPE: ${fileDiffs.length} file(s) changed`);
 
   const sessionId = `review-${Date.now()}`;
-  const latestVersion = await checkForUpdate(VERSION);
+  const latestVersion = (await checkForUpdate(VERSION)) || undefined;
   if (latestVersion) {
     console.error(
       `\nIPE ${latestVersion} is available (current: ${VERSION}). Upgrade: curl -fsSL https://raw.githubusercontent.com/eduardmaghakyan/ipe/main/install.sh | bash\n`,
     );
   }
 
-  await runReviewSession({
-    sessionId,
-    plan: "",
-    permissionMode: "review",
-    mode: "diff-review",
-    fileDiffs,
-    cwd,
-  });
+  const decision = await runOneShotReview(
+    {
+      sessionId,
+      plan: "",
+      permissionMode: "review",
+      mode: "diff-review",
+      fileDiffs,
+      cwd,
+    },
+    latestVersion,
+  );
+  outputDecision(decision.behavior, decision.feedback, decision.acceptMode);
 }
 
-const subcommand = process.argv.find(
-  (a) => a === "diff-review" || a === "serve",
-);
+const subcommand = process.argv.find((a) => a === "diff-review");
 
-if (subcommand === "serve") {
-  serveMain({ version: VERSION }).catch((err) => {
-    console.error("IPE serve fatal error:", err);
-    process.exit(1);
-  });
-} else if (subcommand === "diff-review") {
+if (subcommand === "diff-review") {
   diffReviewMain().catch((err) => {
     console.error("IPE fatal error:", err);
+    outputDecision("deny", "IPE internal error. Please retry.");
     process.exit(1);
   });
 } else {

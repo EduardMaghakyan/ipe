@@ -6,8 +6,6 @@ import { runGitDiff, parseUnifiedDiff } from "./git-diff";
 
 const encoder = new TextEncoder();
 
-const RECENT_DECISION_TTL_MS = 30_000;
-
 export interface SessionInput {
   sessionId: string;
   plan: string;
@@ -38,7 +36,6 @@ interface SessionState {
   cwd?: string;
   registeredAt: number;
   resolve: (decision: SessionDecision) => void;
-  hookSSE: Set<ReadableStreamDefaultController>;
 }
 
 interface ServerOptions {
@@ -46,8 +43,14 @@ interface ServerOptions {
   version?: string;
   latestVersion?: string;
   upgradeCommand?: string[];
-  nonce?: string;
-  onShutdownRequest?: () => void;
+}
+
+export interface IPEServer {
+  port: number;
+  stop: (force?: boolean) => void;
+  addSession: (input: SessionInput) => Promise<SessionDecision>;
+  resolveSession: (sessionId: string, decision: SessionDecision) => boolean;
+  hasSession: (sessionId: string) => boolean;
 }
 
 function extractTitle(plan: string): string {
@@ -69,56 +72,9 @@ function sessionToSummary(s: SessionState) {
   };
 }
 
-export function startServer(options: ServerOptions = {}): {
-  port: number;
-  stop: () => void;
-  addSession: (input: SessionInput) => Promise<SessionDecision>;
-  waitForDrain: () => Promise<void>;
-  setDraining: (v: boolean) => void;
-  isDraining: () => boolean;
-} {
+export function startServer(options: ServerOptions = {}): IPEServer {
   const sessions = new Map<string, SessionState>();
   const uiSSE = new Set<ReadableStreamDefaultController>();
-  const recentDecisions = new Map<
-    string,
-    { decision: SessionDecision; expiresAt: number }
-  >();
-
-  let drain: { promise: Promise<void>; resolve: () => void } | null = null;
-  let draining = false;
-
-  function rememberDecision(sessionId: string, decision: SessionDecision) {
-    const expiresAt = Date.now() + RECENT_DECISION_TTL_MS;
-    recentDecisions.set(sessionId, { decision, expiresAt });
-    setTimeout(() => {
-      const entry = recentDecisions.get(sessionId);
-      if (entry && entry.expiresAt <= Date.now()) {
-        recentDecisions.delete(sessionId);
-      }
-    }, RECENT_DECISION_TTL_MS + 100).unref?.();
-  }
-
-  function lookupRecentDecision(sessionId: string): SessionDecision | null {
-    const entry = recentDecisions.get(sessionId);
-    if (!entry) return null;
-    if (entry.expiresAt <= Date.now()) {
-      recentDecisions.delete(sessionId);
-      return null;
-    }
-    return entry.decision;
-  }
-
-  function waitForDrain(): Promise<void> {
-    if (sessions.size === 0) return Promise.resolve();
-    if (!drain) {
-      let resolve!: () => void;
-      const promise = new Promise<void>((r) => {
-        resolve = r;
-      });
-      drain = { promise, resolve };
-    }
-    return drain.promise;
-  }
 
   function broadcastUI(event: string, data: unknown) {
     const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -137,29 +93,12 @@ export function startServer(options: ServerOptions = {}): {
   ): boolean {
     const session = sessions.get(sessionId);
     if (!session) return false;
-
-    rememberDecision(sessionId, decision);
-
-    // Notify hook SSE listeners
-    const msg = `event: decision\ndata: ${JSON.stringify(decision)}\n\n`;
-    for (const ctrl of [...session.hookSSE]) {
-      try {
-        ctrl.enqueue(encoder.encode(msg));
-        ctrl.close();
-      } catch {
-        // already closed
-      }
-    }
-
-    session.resolve(decision);
     sessions.delete(sessionId);
     broadcastUI("session-removed", { sessionId });
-
-    if (sessions.size === 0) {
-      drain?.resolve();
-      drain = null;
-    }
-
+    // Defer the in-process Promise resolution by one tick so the HTTP
+    // response that triggered this call has time to flush before the
+    // hook's main await unblocks and force-stops the server.
+    setTimeout(() => session.resolve(decision), 0);
     return true;
   }
 
@@ -176,20 +115,23 @@ export function startServer(options: ServerOptions = {}): {
         cwd: input.cwd,
         registeredAt: Date.now(),
         resolve,
-        hookSSE: new Set(),
       };
       sessions.set(input.sessionId, state);
       broadcastUI("session-added", sessionToSummary(state));
     });
   }
 
-  // Route matching helper for /api/sessions/:id/*
   function matchSessionRoute(
     pathname: string,
   ): { sessionId: string; action: string } | null {
     const m = pathname.match(/^\/api\/sessions\/([^/]+)\/(.+)$/);
-    if (m) return { sessionId: decodeURIComponent(m[1]), action: m[2] };
-    return null;
+    if (!m) return null;
+    try {
+      return { sessionId: decodeURIComponent(m[1]), action: m[2] };
+    } catch {
+      // Malformed percent-encoding — caller will return 404 (no match)
+      return null;
+    }
   }
 
   const server = Bun.serve({
@@ -197,49 +139,27 @@ export function startServer(options: ServerOptions = {}): {
     async fetch(req) {
       const url = new URL(req.url);
 
-      // Serve UI
       if (req.method === "GET" && url.pathname === "/") {
         return new Response(html, {
           headers: { "Content-Type": "text/html" },
         });
       }
 
-      // Health check
       if (req.method === "GET" && url.pathname === "/api/health") {
         return Response.json({
           ok: true,
           sessions: sessions.size,
           version: options.version || "dev",
           latestVersion: options.latestVersion,
-          nonce: options.nonce,
-          draining,
         });
       }
 
-      // Shutdown request (used by hooks on version mismatch)
-      if (req.method === "POST" && url.pathname === "/api/shutdown") {
-        draining = true;
-        if (options.onShutdownRequest) {
-          // Defer so the response can be flushed first
-          setTimeout(() => options.onShutdownRequest?.(), 0);
-        }
-        return Response.json({ ok: true });
-      }
-
-      // List sessions
       if (req.method === "GET" && url.pathname === "/api/sessions") {
         const list = Array.from(sessions.values()).map(sessionToSummary);
         return Response.json(list);
       }
 
-      // Register session (idempotent by sessionId; 503 while draining)
       if (req.method === "POST" && url.pathname === "/api/sessions") {
-        if (draining) {
-          return Response.json(
-            { ok: false, error: "draining" },
-            { status: 503 },
-          );
-        }
         let body: SessionInput;
         try {
           body = (await req.json()) as SessionInput;
@@ -255,16 +175,6 @@ export function startServer(options: ServerOptions = {}): {
             { status: 400 },
           );
         }
-        // Recently-resolved? Replay decision so a slow client can finish.
-        const recent = lookupRecentDecision(body.sessionId);
-        if (recent) {
-          return Response.json({
-            ok: true,
-            replayed: true,
-            decision: recent,
-          });
-        }
-        // Already in progress with same id? Idempotent no-op.
         if (sessions.has(body.sessionId)) {
           return Response.json({ ok: true, deduped: true });
         }
@@ -272,7 +182,6 @@ export function startServer(options: ServerOptions = {}): {
         return Response.json({ ok: true });
       }
 
-      // UI SSE
       if (req.method === "GET" && url.pathname === "/api/events") {
         let ctrl: ReadableStreamDefaultController;
         const stream = new ReadableStream({
@@ -296,7 +205,6 @@ export function startServer(options: ServerOptions = {}): {
         });
       }
 
-      // Session-specific routes
       const route = matchSessionRoute(url.pathname);
       if (route) {
         const session = sessions.get(route.sessionId);
@@ -346,17 +254,6 @@ export function startServer(options: ServerOptions = {}): {
           }
         }
 
-        // Hook self-cancel — used when the hook's parent dies.
-        if (route.action === "cancel" && req.method === "POST") {
-          const ok = resolveSession(route.sessionId, {
-            behavior: "deny",
-            feedback: "Hook canceled (parent process exited)",
-          });
-          if (!ok)
-            return Response.json({ error: "not found" }, { status: 404 });
-          return Response.json({ ok: true });
-        }
-
         if (route.action === "refresh-diff" && req.method === "POST") {
           if (!session || session.mode !== "diff-review" || !session.cwd) {
             return Response.json({ error: "not found" }, { status: 404 });
@@ -391,48 +288,6 @@ export function startServer(options: ServerOptions = {}): {
             );
           }
         }
-
-        if (route.action === "events" && req.method === "GET") {
-          // If the session has already resolved very recently, replay the
-          // decision so a slow-subscribing hook still gets it.
-          const recent = lookupRecentDecision(route.sessionId);
-          if (!session && recent) {
-            const stream = new ReadableStream({
-              start(controller) {
-                const msg = `event: decision\ndata: ${JSON.stringify(recent)}\n\n`;
-                controller.enqueue(encoder.encode(msg));
-                controller.close();
-              },
-            });
-            return new Response(stream, {
-              headers: {
-                "Content-Type": "text/event-stream",
-                "Cache-Control": "no-cache",
-                Connection: "keep-alive",
-              },
-            });
-          }
-          if (!session) {
-            return new Response("Session not found", { status: 404 });
-          }
-          let ctrl: ReadableStreamDefaultController;
-          const stream = new ReadableStream({
-            start(controller) {
-              ctrl = controller;
-              session.hookSSE.add(controller);
-            },
-            cancel() {
-              session.hookSSE.delete(ctrl);
-            },
-          });
-          return new Response(stream, {
-            headers: {
-              "Content-Type": "text/event-stream",
-              "Cache-Control": "no-cache",
-              Connection: "keep-alive",
-            },
-          });
-        }
       }
 
       if (req.method === "POST" && url.pathname === "/api/upgrade") {
@@ -465,12 +320,12 @@ export function startServer(options: ServerOptions = {}): {
 
   return {
     port: server.port,
-    stop: () => server.stop(),
+    // Default to force-closing active connections — without this, long-lived
+    // SSE clients (browser tab still open) keep the event loop alive and
+    // the hook process would hang indefinitely after writing its decision.
+    stop: (force = true) => server.stop(force),
     addSession,
-    waitForDrain,
-    setDraining: (v: boolean) => {
-      draining = v;
-    },
-    isDraining: () => draining,
+    resolveSession,
+    hasSession: (sessionId: string) => sessions.has(sessionId),
   };
 }

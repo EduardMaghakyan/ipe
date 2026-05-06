@@ -1,15 +1,8 @@
-import { describe, test, expect, afterAll, afterEach } from "bun:test";
+import { describe, test, expect, afterAll } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-  spawnHook,
-  waitForRegistered,
-  killHelper,
-  makeHookInput,
-} from "./_helpers";
-
-const HOOK_ENTRY_ABS = join(process.cwd(), "apps/hook/server/index.ts");
+import { spawnHook, waitForListening, makeHookInput } from "./_helpers";
 
 const tmpDir = mkdtempSync(join(tmpdir(), "ipe-test-hook-"));
 const plansDir = join(tmpDir, "plans");
@@ -26,38 +19,15 @@ afterAll(() => {
   }
 });
 
-const sessionLockDirs: string[] = [];
-
-afterEach(async () => {
-  for (const dir of sessionLockDirs.splice(0)) {
-    await killHelper(dir);
-    try {
-      rmSync(dir, { recursive: true, force: true });
-    } catch {
-      // ignore
-    }
-  }
-});
-
-function freshLockDir(prefix = "lock"): string {
-  const dir = mkdtempSync(join(tmpdir(), `ipe-hook-${prefix}-`));
-  sessionLockDirs.push(dir);
-  return dir;
-}
-
 describe("hook stdin→stdout flow", () => {
   test("approve flow outputs allow decision", async () => {
-    const lockDir = freshLockDir();
     const hook = spawnHook({
       stdinData: makeHookInput({
         plan: "# Test Plan\n\nDo the thing",
         sessionId: "s1",
       }),
-      lockDir,
     });
-    const { port } = await waitForRegistered(
-      hook.proc.stderr as ReadableStream,
-    );
+    const { port } = await waitForListening(hook.proc.stderr as ReadableStream);
 
     const res = await fetch(
       `http://localhost:${port}/api/sessions/s1/approve`,
@@ -81,17 +51,13 @@ describe("hook stdin→stdout flow", () => {
   }, 10000);
 
   test("deny flow outputs deny decision with message", async () => {
-    const lockDir = freshLockDir();
     const hook = spawnHook({
       stdinData: makeHookInput({
         plan: "# Test Plan\n\nDo the thing",
         sessionId: "s1",
       }),
-      lockDir,
     });
-    const { port } = await waitForRegistered(
-      hook.proc.stderr as ReadableStream,
-    );
+    const { port } = await waitForListening(hook.proc.stderr as ReadableStream);
 
     await fetch(`http://localhost:${port}/api/sessions/s1/deny`, {
       method: "POST",
@@ -113,17 +79,13 @@ describe("hook stdin→stdout flow", () => {
   }, 10000);
 
   test("deny with no feedback uses default message", async () => {
-    const lockDir = freshLockDir();
     const hook = spawnHook({
       stdinData: makeHookInput({
         plan: "# Plan\n\nContent",
         sessionId: "s1",
       }),
-      lockDir,
     });
-    const { port } = await waitForRegistered(
-      hook.proc.stderr as ReadableStream,
-    );
+    const { port } = await waitForListening(hook.proc.stderr as ReadableStream);
 
     await fetch(`http://localhost:${port}/api/sessions/s1/deny`, {
       method: "POST",
@@ -144,17 +106,13 @@ describe("hook stdin→stdout flow", () => {
   }, 10000);
 
   test("process exits after decision", async () => {
-    const lockDir = freshLockDir();
     const hook = spawnHook({
       stdinData: makeHookInput({
         plan: "# Plan\n\nContent",
         sessionId: "s1",
       }),
-      lockDir,
     });
-    const { port } = await waitForRegistered(
-      hook.proc.stderr as ReadableStream,
-    );
+    const { port } = await waitForListening(hook.proc.stderr as ReadableStream);
 
     await fetch(`http://localhost:${port}/api/sessions/s1/approve`, {
       method: "POST",
@@ -187,7 +145,6 @@ describe("hook reads plan from disk when tool_input is empty", () => {
       JSON.stringify({ slug: "test-slug", message: "entry" }),
     );
 
-    const lockDir = freshLockDir("disk");
     const hook = spawnHook({
       stdinData: JSON.stringify({
         tool_input: {},
@@ -195,12 +152,9 @@ describe("hook reads plan from disk when tool_input is empty", () => {
         session_id: "disk-s1",
         transcript_path: transcriptPath,
       }),
-      lockDir,
       extraEnv: { IPE_PLANS_DIR: plansDir },
     });
-    const { port } = await waitForRegistered(
-      hook.proc.stderr as ReadableStream,
-    );
+    const { port } = await waitForListening(hook.proc.stderr as ReadableStream);
 
     const sessionsRes = await fetch(`http://localhost:${port}/api/sessions`);
     expect(sessionsRes.status).toBe(200);
@@ -233,19 +187,15 @@ describe("hook reads plan from disk when tool_input is empty", () => {
       "# Fallback\n\nMost recent plan",
     );
 
-    const lockDir = freshLockDir("disk");
     const hook = spawnHook({
       stdinData: JSON.stringify({
         tool_input: {},
         permission_mode: "default",
         session_id: "disk-s2",
       }),
-      lockDir,
       extraEnv: { IPE_PLANS_DIR: plansDir },
     });
-    const { port } = await waitForRegistered(
-      hook.proc.stderr as ReadableStream,
-    );
+    const { port } = await waitForListening(hook.proc.stderr as ReadableStream);
 
     const sessionsRes = await fetch(`http://localhost:${port}/api/sessions`);
     expect(sessionsRes.status).toBe(200);
@@ -287,13 +237,11 @@ async function initGitRepo(dir: string) {
 function spawnDiffReview(
   args: string[],
   cwd: string,
-  lockDir: string,
   extraEnv?: Record<string, string>,
 ) {
   return spawnHook({
     stdinData: "",
     cwd,
-    lockDir,
     argv: ["diff-review", ...args],
     extraEnv,
   });
@@ -304,8 +252,7 @@ describe("diff-review hook", () => {
     const repoDir = join(diffTmpDir, "no-changes");
     await initGitRepo(repoDir);
 
-    const lockDir = freshLockDir("diff");
-    const hook = spawnDiffReview([], repoDir, lockDir);
+    const hook = spawnDiffReview([], repoDir);
 
     const exitCode = await Promise.race([
       hook.proc.exited,
@@ -324,11 +271,8 @@ describe("diff-review hook", () => {
     await initGitRepo(repoDir);
     writeFileSync(join(repoDir, "file.txt"), "changed\n");
 
-    const lockDir = freshLockDir("diff");
-    const hook = spawnDiffReview([], repoDir, lockDir);
-    const { port } = await waitForRegistered(
-      hook.proc.stderr as ReadableStream,
-    );
+    const hook = spawnDiffReview([], repoDir);
+    const { port } = await waitForListening(hook.proc.stderr as ReadableStream);
 
     const res = await fetch(`http://localhost:${port}/api/sessions`);
     const sessions = (await res.json()) as {
@@ -367,14 +311,9 @@ describe("diff-review hook", () => {
       stderr: "pipe",
     }).exited;
 
-    const lockDir = freshLockDir("diff");
-    const hook = spawnDiffReview(["--staged"], repoDir, lockDir);
-    const { port } = await waitForRegistered(
-      hook.proc.stderr as ReadableStream,
-    );
+    const hook = spawnDiffReview(["--staged"], repoDir);
+    const { port } = await waitForListening(hook.proc.stderr as ReadableStream);
 
-    const stderrText = await hook.stderr;
-    // Note: stderr() consumes the stream; instead, just verify via session.
     const sessRes = await fetch(`http://localhost:${port}/api/sessions`);
     const sessions = (await sessRes.json()) as { sessionId: string }[];
     expect(sessions).toHaveLength(1);
@@ -393,7 +332,6 @@ describe("diff-review hook", () => {
         setTimeout(() => reject(new Error("timeout")), 3000),
       ),
     ]);
-    void stderrText;
   }, 15000);
 
   test("approve flow outputs allow decision", async () => {
@@ -401,11 +339,8 @@ describe("diff-review hook", () => {
     await initGitRepo(repoDir);
     writeFileSync(join(repoDir, "file.txt"), "approve test\n");
 
-    const lockDir = freshLockDir("diff");
-    const hook = spawnDiffReview([], repoDir, lockDir);
-    const { port } = await waitForRegistered(
-      hook.proc.stderr as ReadableStream,
-    );
+    const hook = spawnDiffReview([], repoDir);
+    const { port } = await waitForListening(hook.proc.stderr as ReadableStream);
 
     const sessions = (await (
       await fetch(`http://localhost:${port}/api/sessions`)
@@ -435,11 +370,8 @@ describe("diff-review hook", () => {
     await initGitRepo(repoDir);
     writeFileSync(join(repoDir, "file.txt"), "deny test\n");
 
-    const lockDir = freshLockDir("diff");
-    const hook = spawnDiffReview([], repoDir, lockDir);
-    const { port } = await waitForRegistered(
-      hook.proc.stderr as ReadableStream,
-    );
+    const hook = spawnDiffReview([], repoDir);
+    const { port } = await waitForListening(hook.proc.stderr as ReadableStream);
 
     const sessions = (await (
       await fetch(`http://localhost:${port}/api/sessions`)
@@ -467,17 +399,13 @@ describe("diff-review hook", () => {
 
 describe("accept mode stdout output", () => {
   test("auto-approve mode outputs updatedPermissions", async () => {
-    const lockDir = freshLockDir("am");
     const hook = spawnHook({
       stdinData: makeHookInput({
         plan: "# Plan\n\nContent",
         sessionId: "am1",
       }),
-      lockDir,
     });
-    const { port } = await waitForRegistered(
-      hook.proc.stderr as ReadableStream,
-    );
+    const { port } = await waitForListening(hook.proc.stderr as ReadableStream);
 
     await fetch(`http://localhost:${port}/api/sessions/am1/approve`, {
       method: "POST",
@@ -500,17 +428,13 @@ describe("accept mode stdout output", () => {
   }, 10000);
 
   test("normal accept mode outputs no extra fields", async () => {
-    const lockDir = freshLockDir("am");
     const hook = spawnHook({
       stdinData: makeHookInput({
         plan: "# Plan\n\nContent",
         sessionId: "am3",
       }),
-      lockDir,
     });
-    const { port } = await waitForRegistered(
-      hook.proc.stderr as ReadableStream,
-    );
+    const { port } = await waitForListening(hook.proc.stderr as ReadableStream);
 
     await fetch(`http://localhost:${port}/api/sessions/am3/approve`, {
       method: "POST",
@@ -530,5 +454,3 @@ describe("accept mode stdout output", () => {
     expect(decision.updatedPermissions).toBeUndefined();
   }, 10000);
 });
-
-void HOOK_ENTRY_ABS;

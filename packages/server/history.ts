@@ -37,6 +37,12 @@ export function saveVersion(sessionId: string, plan: string): PlanVersion {
   mkdirSync(dir, { recursive: true });
 
   const existing = loadHistory(sessionId);
+  // Skip writes for unchanged plans — Claude often re-invokes the hook with
+  // identical content after a "request changes" round, and unbounded
+  // duplicate entries bloat both disk and the UI's history payload.
+  const last = existing.at(-1);
+  if (last && last.plan === plan) return last;
+
   const version = existing.length + 1;
   const entry: PlanVersion = { version, plan, timestamp: Date.now() };
 
