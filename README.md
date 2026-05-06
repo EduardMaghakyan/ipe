@@ -125,10 +125,10 @@ Options: `--staged` (staged changes only), `--all` (all changes vs HEAD).
 
 ## Configuration
 
-| Variable      | Description                                                         | Default          |
-| ------------- | ------------------------------------------------------------------- | ---------------- |
+| Variable      | Description                                                                                                                                                       | Default          |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | `IPE_BROWSER` | Browser executable plus optional flags, space-separated (e.g. `firefox`, `firefox --new-window`). No shell expansion — paths containing spaces are not supported. | Platform default |
-| `IPE_PORT`    | Preferred port; falls back to an OS-assigned ephemeral port if busy | OS-assigned      |
+| `IPE_PORT`    | Preferred port; falls back to an OS-assigned ephemeral port if busy                                                                                               | OS-assigned      |
 
 Platform defaults: `open` (macOS), `xdg-open` (Linux), `cmd /c start` (Windows).
 
