@@ -47,6 +47,9 @@ jobs:
 
       - run: bun install
 
+      - name: Build UI (integration tests import packages/ui/dist/index.html)
+        run: cd packages/ui && bun run build
+
       - run: bun run test
 
   e2e:
