@@ -6,14 +6,28 @@ import { runGitDiff, parseUnifiedDiff } from "./git-diff";
 
 const encoder = new TextEncoder();
 
+export interface QuestionOption {
+  label: string;
+  description: string;
+  preview?: string;
+}
+
+export interface Question {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+  multiSelect: boolean;
+}
+
 export interface SessionInput {
   sessionId: string;
   plan: string;
   permissionMode: string;
   previousPlans?: PlanVersion[];
   fileSnippets?: FileSnippet[];
-  mode?: "plan" | "diff-review";
+  mode?: "plan" | "diff-review" | "ask";
   fileDiffs?: FileDiff[];
+  questions?: Question[];
   cwd?: string;
 }
 
@@ -31,8 +45,9 @@ interface SessionState {
   permissionMode: string;
   previousPlans: PlanVersion[];
   fileSnippets: FileSnippet[];
-  mode: "plan" | "diff-review";
+  mode: "plan" | "diff-review" | "ask";
   fileDiffs: FileDiff[];
+  questions: Question[];
   cwd?: string;
   registeredAt: number;
   resolve: (decision: SessionDecision) => void;
@@ -54,13 +69,19 @@ function extractTitle(plan: string): string {
 function sessionToSummary(s: SessionState) {
   return {
     sessionId: s.sessionId,
-    title: s.mode === "diff-review" ? "Diff Review" : extractTitle(s.plan),
+    title:
+      s.mode === "diff-review"
+        ? "Diff Review"
+        : s.mode === "ask"
+          ? s.questions[0]?.header || "Question"
+          : extractTitle(s.plan),
     plan: s.plan,
     permissionMode: s.permissionMode,
     previousPlans: s.previousPlans,
     fileSnippets: s.fileSnippets,
     mode: s.mode,
     fileDiffs: s.fileDiffs,
+    questions: s.questions,
     registeredAt: s.registeredAt,
   };
 }
@@ -140,6 +161,7 @@ export function startServer(options: ServerOptions = {}): {
         fileSnippets: input.fileSnippets ?? [],
         mode: input.mode ?? "plan",
         fileDiffs: input.fileDiffs ?? [],
+        questions: input.questions ?? [],
         cwd: input.cwd,
         registeredAt: Date.now(),
         resolve,
@@ -161,6 +183,7 @@ export function startServer(options: ServerOptions = {}): {
 
   const server = Bun.serve({
     port: options.port ?? 0,
+    idleTimeout: 255, // max value (seconds) — prevents SSE connections from being dropped
     async fetch(req) {
       const url = new URL(req.url);
 
@@ -275,6 +298,34 @@ export function startServer(options: ServerOptions = {}): {
           }
         }
 
+        if (route.action === "answer" && req.method === "POST") {
+          if (!session || session.mode !== "ask") {
+            return Response.json({ error: "not found" }, { status: 404 });
+          }
+          let body: { answers: Record<string, string> };
+          try {
+            body = await req.json();
+          } catch {
+            return Response.json(
+              { error: "invalid request body" },
+              { status: 400 },
+            );
+          }
+          if (!body.answers || typeof body.answers !== "object") {
+            return Response.json(
+              { error: "answers object required" },
+              { status: 400 },
+            );
+          }
+          const ok = resolveSession(route.sessionId, {
+            behavior: "allow",
+            feedback: JSON.stringify(body.answers),
+          });
+          if (!ok)
+            return Response.json({ error: "not found" }, { status: 404 });
+          return Response.json({ ok: true });
+        }
+
         if (route.action === "refresh-diff" && req.method === "POST") {
           if (!session || session.mode !== "diff-review" || !session.cwd) {
             return Response.json({ error: "not found" }, { status: 404 });
@@ -315,12 +366,22 @@ export function startServer(options: ServerOptions = {}): {
             return new Response("Session not found", { status: 404 });
           }
           let ctrl: ReadableStreamDefaultController;
+          let heartbeat: ReturnType<typeof setInterval>;
           const stream = new ReadableStream({
             start(controller) {
               ctrl = controller;
               session.hookSSE.add(controller);
+              // Send heartbeat comments to keep connection alive
+              heartbeat = setInterval(() => {
+                try {
+                  controller.enqueue(encoder.encode(": heartbeat\n\n"));
+                } catch {
+                  clearInterval(heartbeat);
+                }
+              }, 30000);
             },
             cancel() {
+              clearInterval(heartbeat);
               session.hookSSE.delete(ctrl);
             },
           });

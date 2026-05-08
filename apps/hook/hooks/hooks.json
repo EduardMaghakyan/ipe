@@ -5,6 +5,12 @@
         "matcher": "ExitPlanMode",
         "hooks": [{ "type": "command", "command": "ipe", "timeout": 345600 }]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [{ "type": "command", "command": "ipe ask", "timeout": 345600 }]
+      }
     ]
   }
 }

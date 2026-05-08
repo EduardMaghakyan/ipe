@@ -26,6 +26,12 @@ const PORT_RANGE = 10;
 interface HookInput {
   tool_input: {
     plan?: string;
+    questions?: Array<{
+      question: string;
+      header: string;
+      options: Array<{ label: string; description: string; preview?: string }>;
+      multiSelect: boolean;
+    }>;
     [key: string]: unknown;
   };
   session_id?: string;
@@ -61,6 +67,17 @@ function outputDecision(
     hookSpecificOutput: {
       hookEventName: "PermissionRequest",
       decision,
+    },
+  };
+  process.stdout.write(JSON.stringify(output) + "\n");
+}
+
+function outputAskAnswer(answers: Record<string, string>): void {
+  const output = {
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "allow",
+      updatedInput: { answers },
     },
   };
   process.stdout.write(JSON.stringify(output) + "\n");
@@ -598,11 +615,190 @@ async function diffReviewMain() {
   }
 }
 
+async function ensureAskServer(): Promise<number> {
+  const basePort = getBasePort();
+
+  // Check for existing server
+  const lock = readLock();
+  if (lock && isProcessAlive(lock.pid) && (await isIPEServer(lock.port))) {
+    return lock.port;
+  }
+  if (lock) removeLock();
+
+  // Start server as a detached background process
+  console.error("IPE ask: starting background server");
+  const os = require("os");
+  const path = require("path");
+  const selfPath = path.join(os.homedir(), ".ipe", "ipe");
+  const proc = Bun.spawn([selfPath, "ask-serve", String(basePort)], {
+    stdio: ["ignore", "ignore", "pipe"],
+    detached: true,
+  });
+  proc.unref();
+
+  // Wait for it to be ready
+  for (let i = 0; i < 50; i++) {
+    await new Promise((r) => setTimeout(r, 200));
+    if (await isIPEServer(basePort)) {
+      console.error(`IPE ask: background server ready on port ${basePort}`);
+      return basePort;
+    }
+  }
+  throw new Error("Background server failed to start");
+}
+
+async function askMain() {
+  const raw = await readStdin();
+  let input: HookInput;
+
+  try {
+    input = JSON.parse(raw);
+  } catch {
+    console.error("Failed to parse stdin JSON");
+    process.exit(0);
+  }
+
+  const questions = input.tool_input?.questions;
+  if (!questions || !Array.isArray(questions) || questions.length === 0) {
+    console.error("No questions found in stdin input");
+    process.exit(0);
+  }
+
+  const sessionId = input.session_id || `ask-${Date.now()}`;
+  console.error(`IPE ask: session=${sessionId} questions=${questions.length}`);
+
+  const fs = require("fs");
+  const debugLog = (msg: string) => {
+    try {
+      fs.appendFileSync("/tmp/ipe-ask-debug.log", `[${sessionId}] ${new Date().toISOString()} ${msg}\n`);
+    } catch {}
+    console.error(msg);
+  };
+
+  debugLog("starting ensureAskServer");
+  const port = await ensureAskServer();
+
+  // Register session
+  const res = await fetch(`http://localhost:${port}/api/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId,
+      plan: "",
+      permissionMode: "ask",
+      mode: "ask",
+      questions,
+    }),
+  });
+
+  if (!res.ok) {
+    console.error(`IPE ask: failed to register: ${res.status}`);
+    process.exit(0);
+  }
+
+  debugLog(`registered session on port ${port}`);
+
+  // Wait for answer via SSE
+  debugLog("connecting to SSE");
+  try {
+    const decision = await waitForSSEDecision(port, sessionId);
+    debugLog(`received decision: ${JSON.stringify(decision)}`);
+    const answers = JSON.parse(decision.feedback) as Record<string, string>;
+    outputAskAnswer(answers);
+    debugLog("answer output to stdout");
+  } catch (err) {
+    debugLog(`SSE FAILED: ${err}`);
+    process.exit(0);
+  }
+}
+
+// Background server for ask mode — started as detached process by askMain
+async function askServeMain() {
+  const port = parseInt(process.argv[process.argv.indexOf("ask-serve") + 1] || String(DEFAULT_PORT), 10);
+
+  const latestVersion = await checkForUpdate(VERSION);
+  const server = tryStartServer(port, VERSION, latestVersion || undefined);
+  if (!server) {
+    console.error(`IPE ask-serve: port ${port} in use`);
+    process.exit(1);
+  }
+
+  writeLock(port);
+  console.error(`IPE ask-serve: listening on port ${port}`);
+
+  const cleanup = () => {
+    removeLock();
+    server.stop();
+    process.exit(0);
+  };
+  process.on("SIGINT", cleanup);
+  process.on("SIGTERM", cleanup);
+
+  let browserOpened = false;
+
+  // Use drain to detect when all sessions complete, then auto-shutdown after idle period
+  const scheduleShutdown = () => {
+    server.waitForDrain().then(() => {
+      // All sessions resolved — wait a bit for new sessions, then shut down
+      setTimeout(async () => {
+        try {
+          const res = await fetch(`http://localhost:${port}/api/sessions`);
+          const sessions = (await res.json()) as unknown[];
+          if (sessions.length === 0) {
+            console.error("IPE ask-serve: no sessions, shutting down");
+            cleanup();
+          } else {
+            // New sessions arrived, wait for them too
+            scheduleShutdown();
+          }
+        } catch {
+          cleanup();
+        }
+      }, 5000);
+    });
+  };
+
+  // Open browser when first session arrives (check via SSE init event)
+  const addSessionOrig = server.addSession.bind(server);
+  // We can't override addSession directly, so poll briefly
+  const checkBrowser = () => {
+    setTimeout(async () => {
+      try {
+        const res = await fetch(`http://localhost:${port}/api/sessions`);
+        const sessions = (await res.json()) as unknown[];
+        if (sessions.length > 0 && !browserOpened) {
+          browserOpened = true;
+          openBrowser(`http://localhost:${port}`);
+          // Start shutdown watcher after first session
+          scheduleShutdown();
+          return;
+        }
+      } catch {
+        // ignore
+      }
+      checkBrowser();
+    }, 300);
+  };
+  checkBrowser();
+}
+
 // Route based on subcommand (argv differs between `bun run` and compiled binary)
-const subcommand = process.argv.find((a) => a === "diff-review");
+const subcommand = process.argv.find(
+  (a) => a === "diff-review" || a === "ask" || a === "ask-serve",
+);
 if (subcommand === "diff-review") {
   diffReviewMain().catch((err) => {
     console.error("IPE fatal error:", err);
+    process.exit(1);
+  });
+} else if (subcommand === "ask") {
+  askMain().catch((err) => {
+    console.error("IPE fatal error:", err);
+    process.exit(0);
+  });
+} else if (subcommand === "ask-serve") {
+  askServeMain().catch((err) => {
+    console.error("IPE ask-serve fatal error:", err);
     process.exit(1);
   });
 } else {
