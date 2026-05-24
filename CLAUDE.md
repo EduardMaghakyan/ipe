@@ -32,17 +32,17 @@ Bun monorepo with two workspaces: `packages/*` and `apps/*`.
 
 ### Packages
 
-- **`apps/hook/server/index.ts`** — Binary entrypoint. Reads Claude Code's JSON from stdin, coordinates multi-process locking, either starts the server (owner path) or registers as a client to an existing server, outputs decision JSON to stdout.
-- **`packages/server/`** — HTTP server (`Bun.serve`), session management, all API routes, SSE broadcasting, lock file handling (`lock.ts`), plan version history (`history.ts`), browser launching (`browser.ts`), update checking (`update.ts`).
+- **`apps/hook/server/index.ts`** — Binary entrypoint. Reads Claude Code's JSON from stdin, starts an in-process `Bun.serve` on an ephemeral port (or `IPE_PORT` if set), opens the browser, awaits the user's decision via an in-process Promise, writes JSON to stdout, exits.
+- **`packages/server/`** — HTTP server (`Bun.serve`), session management, all API routes, SSE broadcasting for the UI, plan version history (`history.ts`), browser launching (`browser.ts`), update checking (`update.ts`).
 - **`packages/ui/`** — Svelte 5 frontend. `App.svelte` orchestrates session state and SSE subscriptions. Components in `lib/`, pure utilities in `utils/`.
 
-### Multi-session design
+### Single-process design
 
-A single shared server handles multiple concurrent hook processes. First hook wins the lock file (`~/.ipe/server.lock`), subsequent hooks POST their session to the running server and wait via per-session SSE. The server shuts down 5 seconds after the last session resolves.
+Each hook invocation owns its own ephemeral server. There is no shared helper, no lock file, no inter-process coordination. N concurrent hooks → N tabs. SIGINT/SIGTERM resolve the in-flight session as `deny` so stdout is always well-formed.
 
 ### Key data flow
 
-stdin JSON → `readStdin()` → lock check → server owner or client path → `addSession()` returns Promise → browser opens → user reviews in Svelte UI → approve/deny POST → `resolveSession()` → SSE `decision` event → `outputDecision()` writes to stdout → Claude Code reads result.
+stdin JSON → `readStdinWithTimeout()` → `resolveSnippets()` → `Bun.serve()` on ephemeral port → `addSession()` returns Promise → `openBrowser()` (detached, fire-and-forget) → user reviews in Svelte UI → approve/deny POST → `resolveSession()` resolves the Promise → `outputDecision()` writes to stdout → `server.stop()` in finally → exit.
 
 ## Tech stack
 
@@ -56,6 +56,7 @@ stdin JSON → `readStdin()` → lock check → server owner or client path → 
 
 - Markdown rendering uses `marked` (via `utils/markedRenderer.ts`) with a custom renderer that injects `data-unit-id` attributes for annotation mapping. The renderer produces `{ html, units, title }` where `units` are annotatable semantic elements (headings, paragraphs, list items, code lines, table rows, blockquotes).
 - The diff engine in `utils/diff.ts` uses LCS — keep it dependency-free.
-- Lock file operations in `packages/server/lock.ts` use atomic rename (write to `.tmp` then `renameSync`).
-- UI state is per-session via a `Map<sessionId, SessionUIState>` with save/restore on tab switching.
-- The `IPE_LOCK_DIR` env var overrides the lock file directory (used in tests to avoid conflicts).
+- UI state is per-session via a `Map<sessionId, SessionUIState>` with save/restore on tab switching (the UI still supports multiple sessions per server even though hooks now only register one each).
+- `IPE_PORT` is a _preferred_ port; if it's already in use the hook falls back to an OS-assigned ephemeral port.
+- `IPE_BROWSER` overrides the browser-launch command. `IPE_BROWSER=true` is used in tests to no-op the launch.
+- `IPE_STDIN_TIMEOUT_MS` overrides the stdin read deadline (default 30000) — used in tests.

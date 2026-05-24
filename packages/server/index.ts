@@ -36,7 +36,6 @@ interface SessionState {
   cwd?: string;
   registeredAt: number;
   resolve: (decision: SessionDecision) => void;
-  hookSSE: Set<ReadableStreamDefaultController>;
 }
 
 interface ServerOptions {
@@ -44,6 +43,14 @@ interface ServerOptions {
   version?: string;
   latestVersion?: string;
   upgradeCommand?: string[];
+}
+
+export interface IPEServer {
+  port: number;
+  stop: (force?: boolean) => void;
+  addSession: (input: SessionInput) => Promise<SessionDecision>;
+  resolveSession: (sessionId: string, decision: SessionDecision) => boolean;
+  hasSession: (sessionId: string) => boolean;
 }
 
 function extractTitle(plan: string): string {
@@ -65,28 +72,9 @@ function sessionToSummary(s: SessionState) {
   };
 }
 
-export function startServer(options: ServerOptions = {}): {
-  port: number;
-  stop: () => void;
-  addSession: (input: SessionInput) => Promise<SessionDecision>;
-  waitForDrain: () => Promise<void>;
-} {
+export function startServer(options: ServerOptions = {}): IPEServer {
   const sessions = new Map<string, SessionState>();
   const uiSSE = new Set<ReadableStreamDefaultController>();
-
-  let drain: { promise: Promise<void>; resolve: () => void } | null = null;
-
-  function waitForDrain(): Promise<void> {
-    if (sessions.size === 0) return Promise.resolve();
-    if (!drain) {
-      let resolve!: () => void;
-      const promise = new Promise<void>((r) => {
-        resolve = r;
-      });
-      drain = { promise, resolve };
-    }
-    return drain.promise;
-  }
 
   function broadcastUI(event: string, data: unknown) {
     const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -105,28 +93,12 @@ export function startServer(options: ServerOptions = {}): {
   ): boolean {
     const session = sessions.get(sessionId);
     if (!session) return false;
-
-    // Notify hook SSE listeners
-    const msg = `event: decision\ndata: ${JSON.stringify(decision)}\n\n`;
-    for (const ctrl of [...session.hookSSE]) {
-      try {
-        ctrl.enqueue(encoder.encode(msg));
-        ctrl.close();
-      } catch {
-        // already closed
-      }
-    }
-
-    session.resolve(decision);
     sessions.delete(sessionId);
     broadcastUI("session-removed", { sessionId });
-
-    // Check if all sessions are done
-    if (sessions.size === 0) {
-      drain?.resolve();
-      drain = null;
-    }
-
+    // Defer the in-process Promise resolution by one tick so the HTTP
+    // response that triggered this call has time to flush before the
+    // hook's main await unblocks and force-stops the server.
+    setTimeout(() => session.resolve(decision), 0);
     return true;
   }
 
@@ -143,20 +115,23 @@ export function startServer(options: ServerOptions = {}): {
         cwd: input.cwd,
         registeredAt: Date.now(),
         resolve,
-        hookSSE: new Set(),
       };
       sessions.set(input.sessionId, state);
       broadcastUI("session-added", sessionToSummary(state));
     });
   }
 
-  // Route matching helper for /api/sessions/:id/*
   function matchSessionRoute(
     pathname: string,
   ): { sessionId: string; action: string } | null {
     const m = pathname.match(/^\/api\/sessions\/([^/]+)\/(.+)$/);
-    if (m) return { sessionId: decodeURIComponent(m[1]), action: m[2] };
-    return null;
+    if (!m) return null;
+    try {
+      return { sessionId: decodeURIComponent(m[1]), action: m[2] };
+    } catch {
+      // Malformed percent-encoding — caller will return 404 (no match)
+      return null;
+    }
   }
 
   const server = Bun.serve({
@@ -164,14 +139,12 @@ export function startServer(options: ServerOptions = {}): {
     async fetch(req) {
       const url = new URL(req.url);
 
-      // Serve UI
       if (req.method === "GET" && url.pathname === "/") {
         return new Response(html, {
           headers: { "Content-Type": "text/html" },
         });
       }
 
-      // Health check
       if (req.method === "GET" && url.pathname === "/api/health") {
         return Response.json({
           ok: true,
@@ -181,33 +154,40 @@ export function startServer(options: ServerOptions = {}): {
         });
       }
 
-      // List sessions
       if (req.method === "GET" && url.pathname === "/api/sessions") {
         const list = Array.from(sessions.values()).map(sessionToSummary);
         return Response.json(list);
       }
 
-      // Register session
       if (req.method === "POST" && url.pathname === "/api/sessions") {
-        return req
-          .json()
-          .then((body: SessionInput) => {
-            addSession(body);
-            return Response.json({ ok: true });
-          })
-          .catch(() =>
-            Response.json({ error: "invalid request body" }, { status: 400 }),
+        let body: SessionInput;
+        try {
+          body = (await req.json()) as SessionInput;
+        } catch {
+          return Response.json(
+            { error: "invalid request body" },
+            { status: 400 },
           );
+        }
+        if (!body.sessionId) {
+          return Response.json(
+            { error: "sessionId required" },
+            { status: 400 },
+          );
+        }
+        if (sessions.has(body.sessionId)) {
+          return Response.json({ ok: true, deduped: true });
+        }
+        addSession(body);
+        return Response.json({ ok: true });
       }
 
-      // UI SSE
       if (req.method === "GET" && url.pathname === "/api/events") {
         let ctrl: ReadableStreamDefaultController;
         const stream = new ReadableStream({
           start(controller) {
             ctrl = controller;
             uiSSE.add(controller);
-            // Send current sessions as initial data
             const list = Array.from(sessions.values()).map(sessionToSummary);
             const msg = `event: init\ndata: ${JSON.stringify(list)}\n\n`;
             controller.enqueue(encoder.encode(msg));
@@ -225,7 +205,6 @@ export function startServer(options: ServerOptions = {}): {
         });
       }
 
-      // Session-specific routes
       const route = matchSessionRoute(url.pathname);
       if (route) {
         const session = sessions.get(route.sessionId);
@@ -309,29 +288,6 @@ export function startServer(options: ServerOptions = {}): {
             );
           }
         }
-
-        if (route.action === "events" && req.method === "GET") {
-          if (!session) {
-            return new Response("Session not found", { status: 404 });
-          }
-          let ctrl: ReadableStreamDefaultController;
-          const stream = new ReadableStream({
-            start(controller) {
-              ctrl = controller;
-              session.hookSSE.add(controller);
-            },
-            cancel() {
-              session.hookSSE.delete(ctrl);
-            },
-          });
-          return new Response(stream, {
-            headers: {
-              "Content-Type": "text/event-stream",
-              "Cache-Control": "no-cache",
-              Connection: "keep-alive",
-            },
-          });
-        }
       }
 
       if (req.method === "POST" && url.pathname === "/api/upgrade") {
@@ -364,8 +320,12 @@ export function startServer(options: ServerOptions = {}): {
 
   return {
     port: server.port,
-    stop: () => server.stop(),
+    // Default to force-closing active connections — without this, long-lived
+    // SSE clients (browser tab still open) keep the event loop alive and
+    // the hook process would hang indefinitely after writing its decision.
+    stop: (force = true) => server.stop(force),
     addSession,
-    waitForDrain,
+    resolveSession,
+    hasSession: (sessionId: string) => sessions.has(sessionId),
   };
 }

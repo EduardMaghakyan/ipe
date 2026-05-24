@@ -86,7 +86,8 @@ export function extractFileRefs(markdown: string): Array<{
 }
 
 const CONTEXT_LINES = 5;
-const FILE_READ_TIMEOUT = 5000;
+const RESOLVE_BUDGET_MS = 5_000;
+const PER_FILE_TIMEOUT_MS = 1_000;
 
 export async function resolveSnippets(
   markdown: string,
@@ -94,12 +95,26 @@ export async function resolveSnippets(
 ): Promise<FileSnippet[]> {
   const refs = extractFileRefs(markdown);
   const snippets: FileSnippet[] = [];
+  const deadline = Date.now() + RESOLVE_BUDGET_MS;
   const realCwd = await realpath(cwd);
 
   for (const ref of refs) {
+    const remaining = deadline - Date.now();
+    // Skip the read attempt entirely when the remaining budget is too small
+    // to do useful work — otherwise we'd burn it on a 0–50ms timer that
+    // fires before the readFile can complete and report a misleading
+    // "File read timed out" instead of "budget exceeded".
+    if (remaining < 50) {
+      snippets.push({
+        path: ref.path,
+        content: "",
+        error: "Snippet resolution budget exceeded",
+      });
+      continue;
+    }
+
     const fullPath = resolve(cwd, ref.path);
 
-    // Resolve symlinks and verify path stays within project directory
     let realFullPath: string;
     try {
       realFullPath = await realpath(fullPath);
@@ -116,15 +131,13 @@ export async function resolveSnippets(
       continue;
     }
 
+    const fileTimeout = Math.min(remaining, PER_FILE_TIMEOUT_MS);
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const text = await Promise.race([
         readFile(realFullPath, "utf-8"),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new Error("timeout")),
-            FILE_READ_TIMEOUT,
-          );
+          timer = setTimeout(() => reject(new Error("timeout")), fileTimeout);
         }),
       ]);
       clearTimeout(timer);

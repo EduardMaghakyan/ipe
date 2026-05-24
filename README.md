@@ -12,7 +12,7 @@ Review Claude Code plans and code diffs in a browser UI with inline comments, li
 - **GitHub-style plan review** — inline comments on any block or text selection, approve or request changes
 - **File snippet preview** — click any backtick-wrapped file reference (e.g. `` `src/index.ts` ``) to open a resizable side drawer with syntax-highlighted source code
 - **Plan version diff** — compare current plan against previous versions with side-by-side or inline views
-- **Multi-session support** — multiple concurrent Claude Code sessions share one server, switch between plans via tabs
+- **Concurrent sessions** — each plan opens in its own browser tab; multiple Claude Code sessions can be reviewed in parallel
 - **Line-range file references** — supports `src/foo.ts:10-20` syntax to show specific line ranges in the snippet drawer
 - **Code diff review** — review unstaged/staged/all changes with a file picker, unified diff view, and inline commenting (`/diff-review`)
 
@@ -125,10 +125,10 @@ Options: `--staged` (staged changes only), `--all` (all changes vs HEAD).
 
 ## Configuration
 
-| Variable      | Description                                                   | Default          |
-| ------------- | ------------------------------------------------------------- | ---------------- |
-| `IPE_BROWSER` | Command to open the browser (e.g. `firefox`, `google-chrome`) | Platform default |
-| `IPE_PORT`    | Base port for the HTTP server (tries up to 10 ports in range) | `19450`          |
+| Variable      | Description                                                                                                                                                       | Default          |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| `IPE_BROWSER` | Browser executable plus optional flags, space-separated (e.g. `firefox`, `firefox --new-window`). No shell expansion — paths containing spaces are not supported. | Platform default |
+| `IPE_PORT`    | Preferred port; falls back to an OS-assigned ephemeral port if busy                                                                                               | OS-assigned      |
 
 Platform defaults: `open` (macOS), `xdg-open` (Linux), `cmd /c start` (Windows).
 
