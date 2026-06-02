@@ -16,7 +16,7 @@ jobs:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Delete pre-release and tag
         env:
@@ -30,7 +30,7 @@ jobs:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create or update pre-release
         env:
@@ -74,7 +74,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
