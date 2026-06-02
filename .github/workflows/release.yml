@@ -22,7 +22,7 @@ jobs:
     outputs:
       tag_name: ${{ steps.tag.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Get tag name
         id: tag
         run: echo "tag_name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
@@ -53,7 +53,7 @@ jobs:
       TAG_NAME: ${{ needs.create-release.outputs.tag_name || github.event.release.tag_name || github.event.inputs.tag }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ env.TAG_NAME }}
 
